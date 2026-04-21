@@ -1,0 +1,1382 @@
+import { useState, useCallback, useRef, useEffect } from "react";
+
+const STEPS = ["座席設定", "名簿作成", "条件設定", "配置結果"];
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function getAdjacentKeys(r, c) {
+  return [`${r}-${c - 1}`, `${r}-${c + 1}`];
+}
+
+function findSeatOf(arrangement, studentId) {
+  for (const [key, id] of Object.entries(arrangement)) {
+    if (id === studentId) {
+      const [r, c] = key.split("-").map(Number);
+      return { r, c, key };
+    }
+  }
+  return null;
+}
+
+function generateArrangement(students, availableSeats, conditions, rows) {
+  const result = {};
+  const placed = new Set();
+  const frontSeats = availableSeats.filter((s) => s.r === 0);
+  const front3Seats = availableSeats.filter((s) => s.r < 3);
+  const isAdj = (s1, s2) => s1.r === s2.r && Math.abs(s1.c - s2.c) === 1;
+  const isTaken = (s) => !!result[`${s.r}-${s.c}`];
+  const fixedIds = new Set(Object.values(conditions.fixed));
+
+  // 0. Fixed placement
+  for (const [seatKey, studentId] of Object.entries(conditions.fixed)) {
+    result[seatKey] = studentId;
+    placed.add(studentId);
+  }
+
+  // 1. shouldAdj pairs
+  for (const [id1, id2] of conditions.shouldAdj) {
+    if (placed.has(id1) || placed.has(id2)) continue;
+    const pairs = [];
+    for (const s1 of shuffle(availableSeats)) {
+      if (isTaken(s1)) continue;
+      for (const s2 of availableSeats) {
+        if (s1 === s2 || isTaken(s2)) continue;
+        if (!isAdj(s1, s2)) continue;
+        let ok = true;
+        if (conditions.frontOnly.has(id1) && s1.r !== 0) ok = false;
+        if (conditions.frontOnly.has(id2) && s2.r !== 0) ok = false;
+        if (conditions.frontThree.has(id1) && s1.r >= 3) ok = false;
+        if (conditions.frontThree.has(id2) && s2.r >= 3) ok = false;
+        if (ok) pairs.push([s1, s2]);
+      }
+    }
+    if (pairs.length > 0) {
+      const [s1, s2] = pairs[Math.floor(Math.random() * pairs.length)];
+      result[`${s1.r}-${s1.c}`] = id1;
+      result[`${s2.r}-${s2.c}`] = id2;
+      placed.add(id1);
+      placed.add(id2);
+    }
+  }
+
+  // 2. frontOnly
+  for (const id of conditions.frontOnly) {
+    if (placed.has(id)) continue;
+    const avail = shuffle(frontSeats.filter((s) => !isTaken(s)));
+    if (avail.length > 0) {
+      result[`${avail[0].r}-${avail[0].c}`] = id;
+      placed.add(id);
+    }
+  }
+
+  // 3. frontThree
+  for (const id of conditions.frontThree) {
+    if (placed.has(id)) continue;
+    const avail = shuffle(front3Seats.filter((s) => !isTaken(s)));
+    if (avail.length > 0) {
+      result[`${avail[0].r}-${avail[0].c}`] = id;
+      placed.add(id);
+    }
+  }
+
+  // 4. Remaining random
+  const remaining = shuffle(students.filter((s) => !placed.has(s.id)));
+  const remainSeats = shuffle(availableSeats.filter((s) => !isTaken(s)));
+  remaining.forEach((student, i) => {
+    if (i < remainSeats.length) {
+      result[`${remainSeats[i].r}-${remainSeats[i].c}`] = student.id;
+    }
+  });
+
+  // 5. Fix cantAdj (never swap fixed students)
+  for (let iter = 0; iter < 100; iter++) {
+    let allOk = true;
+    for (const [id1, id2] of conditions.cantAdj) {
+      const s1 = findSeatOf(result, id1);
+      const s2 = findSeatOf(result, id2);
+      if (s1 && s2 && isAdj(s1, s2)) {
+        allOk = false;
+        const others = availableSeats.filter(
+          (s) =>
+            result[`${s.r}-${s.c}`] &&
+            result[`${s.r}-${s.c}`] !== id1 &&
+            result[`${s.r}-${s.c}`] !== id2 &&
+            !fixedIds.has(result[`${s.r}-${s.c}`])
+        );
+        let swapped = false;
+        if (!fixedIds.has(id1)) {
+          for (const cand of shuffle(others)) {
+            const candId = result[`${cand.r}-${cand.c}`];
+            const adjOfCand = getAdjacentKeys(cand.r, cand.c);
+            const wouldViolate = adjOfCand.some((ak) => result[ak] === id2);
+            let rowOk = true;
+            if (conditions.frontOnly.has(id1) && cand.r !== 0) rowOk = false;
+            if (conditions.frontOnly.has(candId) && s1.r !== 0) rowOk = false;
+            if (conditions.frontThree.has(id1) && cand.r >= 3) rowOk = false;
+            if (conditions.frontThree.has(candId) && s1.r >= 3) rowOk = false;
+            if (!wouldViolate && rowOk) {
+              result[`${cand.r}-${cand.c}`] = id1;
+              result[`${s1.r}-${s1.c}`] = candId;
+              swapped = true;
+              break;
+            }
+          }
+        }
+        if (!swapped && !fixedIds.has(id2)) {
+          for (const cand of shuffle(others)) {
+            const candId = result[`${cand.r}-${cand.c}`];
+            const adjOfCand = getAdjacentKeys(cand.r, cand.c);
+            const wouldViolate = adjOfCand.some((ak) => result[ak] === id1);
+            let rowOk = true;
+            if (conditions.frontOnly.has(id2) && cand.r !== 0) rowOk = false;
+            if (conditions.frontOnly.has(candId) && s2.r !== 0) rowOk = false;
+            if (conditions.frontThree.has(id2) && cand.r >= 3) rowOk = false;
+            if (conditions.frontThree.has(candId) && s2.r >= 3) rowOk = false;
+            if (!wouldViolate && rowOk) {
+              result[`${cand.r}-${cand.c}`] = id2;
+              result[`${s2.r}-${s2.c}`] = candId;
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (allOk) break;
+  }
+
+  return result;
+}
+
+const P = {
+  bg: "#F7F5F0",
+  card: "#FFFFFF",
+  primary: "#3D7A8A",
+  primaryLight: "#E8F4F7",
+  primaryDark: "#2B5A66",
+  accent: "#E8945A",
+  accentLight: "#FFF3E8",
+  danger: "#D95555",
+  dangerLight: "#FDEAEA",
+  success: "#4A9A6B",
+  successLight: "#E8F5EE",
+  text: "#2D3436",
+  textLight: "#6B7B8D",
+  border: "#E2DFD8",
+  disabled: "#D5D0C8",
+  seatBg: "#F0EDE6",
+  seatActive: "#E8F4F7",
+};
+
+const font = `'Zen Maru Gothic', 'BIZ UDPGothic', sans-serif`;
+
+export default function SeatArrangerApp() {
+  const [step, setStep] = useState(0);
+  const [rows, setRows] = useState(6);
+  const [cols, setCols] = useState(6);
+  const [disabled, setDisabled] = useState(new Set());
+  const [students, setStudents] = useState([]);
+  const [pasteText, setPasteText] = useState("");
+  const [pasted, setPasted] = useState(false);
+  const [conditions, setConditions] = useState({
+    frontOnly: new Set(),
+    frontThree: new Set(),
+    fixed: {},
+    cantAdj: [],
+    shouldAdj: [],
+  });
+  const [arrangement, setArrangement] = useState({});
+  const [selectedSeat, setSelectedSeat] = useState(null);
+  const [condTab, setCondTab] = useState(0);
+  const [pairFirst, setPairFirst] = useState(null);
+  const [fixedSelectStudent, setFixedSelectStudent] = useState(null);
+  const [privacyDismissed, setPrivacyDismissed] = useState(false);
+  const [className, setClassName] = useState("");
+  const printRef = useRef(null);
+
+  const availableSeats = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (!disabled.has(`${r}-${c}`)) availableSeats.push({ r, c });
+    }
+  }
+  const seatCount = availableSeats.length;
+
+  const initStudents = useCallback(() => {
+    setStudents(
+      Array.from({ length: seatCount }, (_, i) => ({
+        id: i + 1,
+        name: "",
+      }))
+    );
+    setPasted(false);
+    setPasteText("");
+  }, [seatCount]);
+
+  useEffect(() => {
+    if (step === 1 && students.length !== seatCount) initStudents();
+  }, [step, seatCount, initStudents, students.length]);
+
+  const applyPaste = () => {
+    const lines = pasteText
+      .split(/[\n\r]+/)
+      .map((l) => l.split(/\t/)[0].trim())
+      .filter((l) => l);
+    setStudents((prev) =>
+      prev.map((s, i) => ({ ...s, name: i < lines.length ? lines[i] : s.name }))
+    );
+    setPasted(true);
+  };
+
+  const updateStudentName = (id, name) => {
+    setStudents((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
+  };
+
+  const toggleCondition = (type, id) => {
+    setConditions((prev) => {
+      const next = { ...prev, [type]: new Set(prev[type]) };
+      if (next[type].has(id)) next[type].delete(id);
+      else next[type].add(id);
+      return next;
+    });
+  };
+
+  const addPair = (type, id) => {
+    if (pairFirst === null) {
+      setPairFirst(id);
+    } else {
+      if (pairFirst !== id) {
+        const exists = conditions[type].some(
+          ([a, b]) =>
+            (a === pairFirst && b === id) || (a === id && b === pairFirst)
+        );
+        if (!exists) {
+          setConditions((prev) => ({
+            ...prev,
+            [type]: [...prev[type], [pairFirst, id]],
+          }));
+        }
+      }
+      setPairFirst(null);
+    }
+  };
+
+  const removePair = (type, idx) => {
+    setConditions((prev) => ({
+      ...prev,
+      [type]: prev[type].filter((_, i) => i !== idx),
+    }));
+  };
+
+  const doArrange = () => {
+    const result = generateArrangement(students, availableSeats, conditions, rows);
+    setArrangement(result);
+    setSelectedSeat(null);
+    setStep(3);
+  };
+
+  const handleSeatClick = (key) => {
+    if (!arrangement[key]) return;
+    if (selectedSeat === null) {
+      setSelectedSeat(key);
+    } else if (selectedSeat === key) {
+      setSelectedSeat(null);
+    } else {
+      const newArr = { ...arrangement };
+      const temp = newArr[selectedSeat];
+      newArr[selectedSeat] = newArr[key];
+      newArr[key] = temp;
+      setArrangement(newArr);
+      setSelectedSeat(null);
+    }
+  };
+
+  const getStudentById = (id) => students.find((s) => s.id === id);
+  const displayName = (s) => (s?.name?.trim() ? s.name : `${s?.id}番`);
+
+  const handlePrint = () => {
+    const el = printRef.current;
+    if (!el) return;
+    const w = window.open("", "_blank");
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+      <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
+      <title>座席表</title><style>
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { font-family:'Zen Maru Gothic',sans-serif; padding:20mm; }
+      .title { text-align:center; font-size:20pt; font-weight:700; margin-bottom:4mm; }
+      .date { text-align:right; font-size:10pt; color:#666; margin-bottom:6mm; }
+      .teacher { text-align:center; background:#E8F4F7; border:2px solid #3D7A8A; border-radius:6px; padding:4mm; font-size:11pt; font-weight:700; color:#3D7A8A; margin-bottom:6mm; max-width: 160mm; margin-left:auto; margin-right:auto; }
+      .grid { display:grid; grid-template-columns:repeat(${cols},1fr); gap:3mm; max-width:180mm; margin:0 auto; }
+      .seat { border:1.5px solid #ccc; border-radius:5px; padding:3mm; text-align:center; min-height:14mm; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+      .seat.disabled { background:#f0f0f0; border-color:#e0e0e0; }
+      .seat .num { font-size:8pt; color:#999; }
+      .seat .name { font-size:11pt; font-weight:700; margin-top:1mm; }
+      .front-label { text-align:center; font-size:9pt; color:#999; margin-top:4mm; }
+      </style></head><body>
+      <div class="title">${className || "座席表"}</div>
+      <div class="date">${new Date().toLocaleDateString("ja-JP")}</div>
+      <div class="teacher">黒　板</div>
+      <div class="grid">`);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const key = `${r}-${c}`;
+        if (disabled.has(key)) {
+          w.document.write(`<div class="seat disabled"></div>`);
+        } else {
+          const sid = arrangement[key];
+          const st = sid ? getStudentById(sid) : null;
+          w.document.write(
+            `<div class="seat"><span class="num">${st ? st.id : ""}</span><span class="name">${st ? (st.name.trim() || st.id + "番") : ""}</span></div>`
+          );
+        }
+      }
+    }
+    w.document.write(`</div><div class="front-label">▲ 前 ▲</div></body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 400);
+  };
+
+  const canProceed = () => {
+    if (step === 0) return seatCount >= 1;
+    if (step === 1) return students.length > 0;
+    return true;
+  };
+
+  const seatCellStyle = (key, isDisabled, isResult) => {
+    const base = {
+      borderRadius: 8,
+      border: "2px solid",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      cursor: isResult ? "pointer" : "pointer",
+      transition: "all 0.15s ease",
+      fontFamily: font,
+      minHeight: isResult ? 64 : 48,
+      userSelect: "none",
+      position: "relative",
+    };
+    if (isResult) {
+      const isSelected = selectedSeat === key;
+      return {
+        ...base,
+        background: isDisabled
+          ? P.disabled
+          : isSelected
+            ? P.accentLight
+            : P.seatActive,
+        borderColor: isDisabled
+          ? "transparent"
+          : isSelected
+            ? P.accent
+            : P.primary,
+        transform: isSelected ? "scale(1.06)" : "none",
+        boxShadow: isSelected ? `0 0 0 3px ${P.accent}44` : "none",
+      };
+    }
+    return {
+      ...base,
+      background: isDisabled ? P.disabled : P.seatBg,
+      borderColor: isDisabled ? "transparent" : P.border,
+      opacity: isDisabled ? 0.5 : 1,
+    };
+  };
+
+  // ─── Render ─────────────────────────────────────────
+  const renderStepIndicator = () => (
+    <div style={{ display: "flex", justifyContent: "center", gap: 0, marginBottom: 28 }}>
+      {STEPS.map((label, i) => (
+        <div
+          key={i}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                background: i <= step ? P.primary : P.border,
+                color: i <= step ? "#fff" : P.textLight,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 700,
+                fontSize: 14,
+                fontFamily: font,
+              }}
+            >
+              {i + 1}
+            </div>
+            <span
+              style={{
+                fontSize: 11,
+                color: i <= step ? P.primary : P.textLight,
+                fontWeight: i === step ? 700 : 400,
+                fontFamily: font,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {label}
+            </span>
+          </div>
+          {i < STEPS.length - 1 && (
+            <div
+              style={{
+                width: 40,
+                height: 2,
+                background: i < step ? P.primary : P.border,
+                marginBottom: 18,
+                marginLeft: 4,
+                marginRight: 4,
+              }}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderStep0 = () => (
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, color: P.text, fontFamily: font }}>
+        座席の列と行を設定
+      </h2>
+      <div style={{ display: "flex", gap: 32, marginBottom: 20, flexWrap: "wrap" }}>
+        {[
+          ["行（前後）", rows, setRows],
+          ["列（左右）", cols, setCols],
+        ].map(([label, val, set]) => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 14, color: P.text, fontFamily: font, fontWeight: 500 }}>
+              {label}
+            </span>
+            <button
+              onClick={() => set(Math.max(1, val - 1))}
+              style={btnSmall}
+            >
+              −
+            </button>
+            <span style={{ fontSize: 22, fontWeight: 700, minWidth: 28, textAlign: "center", fontFamily: font }}>
+              {val}
+            </span>
+            <button
+              onClick={() => set(Math.min(10, val + 1))}
+              style={btnSmall}
+            >
+              ＋
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <p style={{ fontSize: 13, color: P.textLight, marginBottom: 12, fontFamily: font }}>
+        児童が座らない席をクリックしてください（グレーになります）
+      </p>
+
+      <div
+        style={{
+          textAlign: "center",
+          background: P.primaryLight,
+          border: `2px solid ${P.primary}`,
+          borderRadius: 8,
+          padding: "8px 0",
+          fontWeight: 700,
+          color: P.primary,
+          fontSize: 14,
+          fontFamily: font,
+          marginBottom: 8,
+          maxWidth: cols * 72,
+          marginLeft: "auto",
+          marginRight: "auto",
+        }}
+      >
+        黒　板
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${cols}, 1fr)`,
+          gap: 6,
+          maxWidth: cols * 72,
+          margin: "0 auto 8px",
+        }}
+      >
+        {Array.from({ length: rows * cols }, (_, idx) => {
+          const r = Math.floor(idx / cols);
+          const c = idx % cols;
+          const key = `${r}-${c}`;
+          const isDis = disabled.has(key);
+          return (
+            <div
+              key={key}
+              onClick={() => {
+                setDisabled((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(key)) next.delete(key);
+                  else next.add(key);
+                  return next;
+                });
+              }}
+              style={seatCellStyle(key, isDis, false)}
+            >
+              {isDis ? (
+                <span style={{ fontSize: 18, color: "#aaa" }}>✕</span>
+              ) : (
+                <span style={{ fontSize: 11, color: P.textLight, fontFamily: font }}>
+                  {r + 1}-{c + 1}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p style={{ textAlign: "center", fontSize: 13, color: P.textLight, marginTop: 4, fontFamily: font }}>
+        ▲ 前 ▲
+      </p>
+
+      <div
+        style={{
+          marginTop: 16,
+          padding: "10px 16px",
+          background: P.successLight,
+          borderRadius: 8,
+          textAlign: "center",
+          fontFamily: font,
+          fontSize: 15,
+          fontWeight: 700,
+          color: P.success,
+        }}
+      >
+        座席数：{seatCount}人分
+      </div>
+    </div>
+  );
+
+  const renderStep1 = () => (
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: P.text, fontFamily: font }}>
+        名簿作成（{seatCount}人）
+      </h2>
+      <p style={{ fontSize: 13, color: P.textLight, marginBottom: 12, fontFamily: font }}>
+        スプレッドシートからコピーした名前をまとめて貼り付けるか、1人ずつ入力してください。名前の入力は任意です。
+      </p>
+
+      {!pasted && (
+        <div style={{ marginBottom: 16 }}>
+          <textarea
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+            placeholder={"名前を1行ずつ貼り付け\n例：\n田中太郎\n山田花子\n佐藤次郎"}
+            rows={5}
+            style={{
+              width: "100%",
+              padding: 12,
+              borderRadius: 8,
+              border: `1.5px solid ${P.border}`,
+              fontFamily: font,
+              fontSize: 14,
+              resize: "vertical",
+              outline: "none",
+            }}
+          />
+          <button
+            onClick={applyPaste}
+            disabled={!pasteText.trim()}
+            style={{
+              ...btnPrimary,
+              marginTop: 8,
+              opacity: pasteText.trim() ? 1 : 0.4,
+            }}
+          >
+            貼り付けを反映
+          </button>
+        </div>
+      )}
+
+      <div
+        style={{
+          maxHeight: 360,
+          overflowY: "auto",
+          border: `1px solid ${P.border}`,
+          borderRadius: 10,
+          padding: 4,
+        }}
+      >
+        {students.map((s) => (
+          <div
+            key={s.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 10px",
+              borderBottom: `1px solid ${P.border}22`,
+            }}
+          >
+            <span
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: "50%",
+                background: P.primaryLight,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 700,
+                fontSize: 13,
+                color: P.primary,
+                fontFamily: font,
+                flexShrink: 0,
+              }}
+            >
+              {s.id}
+            </span>
+            <input
+              type="text"
+              value={s.name}
+              onChange={(e) => updateStudentName(s.id, e.target.value)}
+              placeholder={`${s.id}番（名前は任意）`}
+              style={{
+                flex: 1,
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: `1.5px solid ${P.border}44`,
+                fontFamily: font,
+                fontSize: 14,
+                outline: "none",
+                background: "transparent",
+              }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const condTabs = [
+    { label: "一番前", key: "frontOnly", type: "toggle" },
+    { label: "前3列まで", key: "frontThree", type: "toggle" },
+    { label: "固定配置", key: "fixed", type: "fixed" },
+    { label: "隣にしない", key: "cantAdj", type: "pair" },
+    { label: "隣にする", key: "shouldAdj", type: "pair" },
+  ];
+
+  const renderStep2 = () => {
+    const tab = condTabs[condTab];
+    return (
+      <div>
+        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: P.text, fontFamily: font }}>
+          配置条件の設定
+        </h2>
+        <p style={{ fontSize: 13, color: P.textLight, marginBottom: 14, fontFamily: font }}>
+          必要な条件を設定してください。条件なしでもランダム配置できます。
+        </p>
+
+        <div style={{ display: "flex", gap: 4, marginBottom: 16, flexWrap: "wrap" }}>
+          {condTabs.map((t, i) => {
+            const count =
+              t.type === "toggle"
+                ? conditions[t.key].size
+                : t.type === "fixed"
+                  ? Object.keys(conditions[t.key]).length
+                  : conditions[t.key].length;
+            return (
+              <button
+                key={i}
+                onClick={() => {
+                  setCondTab(i);
+                  setPairFirst(null);
+                  setFixedSelectStudent(null);
+                }}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: `2px solid ${i === condTab ? P.primary : P.border}`,
+                  background: i === condTab ? P.primaryLight : "transparent",
+                  color: i === condTab ? P.primary : P.textLight,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  fontFamily: font,
+                  position: "relative",
+                }}
+              >
+                {t.label}
+                {count > 0 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: -6,
+                      right: -6,
+                      width: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      background: P.accent,
+                      color: "#fff",
+                      fontSize: 11,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div
+          style={{
+            background: P.bg,
+            borderRadius: 10,
+            padding: 14,
+            minHeight: 200,
+          }}
+        >
+          {tab.type === "toggle" && (
+            <>
+              <p style={{ fontSize: 12, color: P.textLight, marginBottom: 10, fontFamily: font }}>
+                {tab.key === "frontOnly"
+                  ? "一番前の列に配置する児童を選んでください。"
+                  : "前から3列目までに配置する児童を選んでください。"}
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {students.map((s) => {
+                  const active = conditions[tab.key].has(s.id);
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => toggleCondition(tab.key, s.id)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 20,
+                        border: `2px solid ${active ? P.primary : P.border}`,
+                        background: active ? P.primary : "#fff",
+                        color: active ? "#fff" : P.text,
+                        fontSize: 13,
+                        cursor: "pointer",
+                        fontFamily: font,
+                        fontWeight: active ? 700 : 400,
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      {s.id}. {s.name.trim() || `${s.id}番`}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {tab.type === "pair" && (
+            <>
+              <p style={{ fontSize: 12, color: P.textLight, marginBottom: 10, fontFamily: font }}>
+                {tab.key === "cantAdj"
+                  ? "隣同士にしない児童を2人ずつ選んでください。"
+                  : "隣同士にしたい児童を2人ずつ選んでください。"}
+                {pairFirst !== null && (
+                  <span
+                    style={{
+                      color: P.accent,
+                      fontWeight: 700,
+                      marginLeft: 8,
+                    }}
+                  >
+                    → 2人目を選択
+                  </span>
+                )}
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                {students.map((s) => {
+                  const isFirst = pairFirst === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => addPair(tab.key, s.id)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 20,
+                        border: `2px solid ${isFirst ? P.accent : P.border}`,
+                        background: isFirst ? P.accentLight : "#fff",
+                        color: isFirst ? P.accent : P.text,
+                        fontSize: 13,
+                        cursor: "pointer",
+                        fontFamily: font,
+                        fontWeight: isFirst ? 700 : 400,
+                      }}
+                    >
+                      {s.id}. {s.name.trim() || `${s.id}番`}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {conditions[tab.key].length > 0 && (
+                <div
+                  style={{
+                    borderTop: `1px solid ${P.border}`,
+                    paddingTop: 10,
+                  }}
+                >
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: P.textLight,
+                      marginBottom: 6,
+                      fontFamily: font,
+                    }}
+                  >
+                    設定済みペア：
+                  </p>
+                  {conditions[tab.key].map(([a, b], i) => {
+                    const sa = getStudentById(a);
+                    const sb = getStudentById(b);
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "4px 0",
+                          fontFamily: font,
+                          fontSize: 13,
+                        }}
+                      >
+                        <span
+                          style={{
+                            background:
+                              tab.key === "cantAdj"
+                                ? P.dangerLight
+                                : P.successLight,
+                            padding: "3px 10px",
+                            borderRadius: 12,
+                            color:
+                              tab.key === "cantAdj" ? P.danger : P.success,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {displayName(sa)} ↔ {displayName(sb)}
+                        </span>
+                        <button
+                          onClick={() => removePair(tab.key, i)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: P.danger,
+                            cursor: "pointer",
+                            fontSize: 16,
+                            padding: 2,
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
+          {tab.type === "fixed" && (
+            <>
+              <p style={{ fontSize: 12, color: P.textLight, marginBottom: 10, fontFamily: font }}>
+                児童を選び、座席をクリックして固定配置してください。固定された児童はランダム配置から除外されます。
+                {fixedSelectStudent !== null && (
+                  <span style={{ color: P.accent, fontWeight: 700, marginLeft: 8 }}>
+                    → {displayName(getStudentById(fixedSelectStudent))}の席を選択
+                  </span>
+                )}
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                {students.filter((s) => !Object.values(conditions.fixed).includes(s.id)).map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setFixedSelectStudent(fixedSelectStudent === s.id ? null : s.id)}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 20,
+                      border: `2px solid ${fixedSelectStudent === s.id ? P.accent : P.border}`,
+                      background: fixedSelectStudent === s.id ? P.accentLight : "#fff",
+                      color: fixedSelectStudent === s.id ? P.accent : P.text,
+                      fontSize: 13,
+                      cursor: "pointer",
+                      fontFamily: font,
+                      fontWeight: fixedSelectStudent === s.id ? 700 : 400,
+                    }}
+                  >
+                    {s.id}. {s.name.trim() || `${s.id}番`}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{
+                textAlign: "center",
+                background: P.primaryLight,
+                border: `2px solid ${P.primary}`,
+                borderRadius: 6,
+                padding: "4px 0",
+                fontWeight: 700,
+                color: P.primary,
+                fontSize: 12,
+                fontFamily: font,
+                marginBottom: 4,
+                maxWidth: cols * 56,
+                marginLeft: "auto",
+                marginRight: "auto",
+              }}>
+                黒板
+              </div>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${cols}, 1fr)`,
+                gap: 4,
+                maxWidth: cols * 56,
+                margin: "0 auto 12px",
+              }}>
+                {Array.from({ length: rows * cols }, (_, idx) => {
+                  const r = Math.floor(idx / cols);
+                  const c = idx % cols;
+                  const key = `${r}-${c}`;
+                  const isDis = disabled.has(key);
+                  const fixedId = conditions.fixed[key];
+                  const fixedSt = fixedId ? getStudentById(fixedId) : null;
+                  const isFree = !isDis && !fixedId;
+
+                  return (
+                    <div
+                      key={key}
+                      onClick={() => {
+                        if (isDis) return;
+                        if (fixedSelectStudent !== null && isFree) {
+                          setConditions((prev) => ({
+                            ...prev,
+                            fixed: { ...prev.fixed, [key]: fixedSelectStudent },
+                          }));
+                          setFixedSelectStudent(null);
+                        }
+                      }}
+                      style={{
+                        borderRadius: 6,
+                        border: `1.5px solid ${isDis ? "transparent" : fixedId ? P.accent : fixedSelectStudent !== null && isFree ? P.primary : P.border}`,
+                        background: isDis ? P.disabled : fixedId ? P.accentLight : fixedSelectStudent !== null && isFree ? P.primaryLight : P.seatBg,
+                        padding: "4px 2px",
+                        textAlign: "center",
+                        cursor: isDis ? "default" : fixedSelectStudent !== null && isFree ? "pointer" : "default",
+                        minHeight: 36,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        opacity: isDis ? 0.4 : 1,
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      {fixedSt && (
+                        <>
+                          <span style={{ fontSize: 9, color: P.textLight, fontFamily: font }}>{fixedSt.id}</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: P.accent, fontFamily: font, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+                            {displayName(fixedSt)}
+                          </span>
+                        </>
+                      )}
+                      {!isDis && !fixedId && (
+                        <span style={{ fontSize: 9, color: P.textLight, fontFamily: font }}>{r + 1}-{c + 1}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {Object.keys(conditions.fixed).length > 0 && (
+                <div style={{ borderTop: `1px solid ${P.border}`, paddingTop: 10 }}>
+                  <p style={{ fontSize: 12, color: P.textLight, marginBottom: 6, fontFamily: font }}>
+                    固定配置一覧：
+                  </p>
+                  {Object.entries(conditions.fixed).map(([seatKey, studentId]) => {
+                    const st = getStudentById(studentId);
+                    const [sr, sc] = seatKey.split("-").map(Number);
+                    return (
+                      <div key={seatKey} style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "4px 0",
+                        fontFamily: font,
+                        fontSize: 13,
+                      }}>
+                        <span style={{
+                          background: P.accentLight,
+                          padding: "3px 10px",
+                          borderRadius: 12,
+                          color: P.accent,
+                          fontWeight: 600,
+                        }}>
+                          {displayName(st)} → {sr + 1}行{sc + 1}列
+                        </span>
+                        <button
+                          onClick={() => {
+                            setConditions((prev) => {
+                              const next = { ...prev.fixed };
+                              delete next[seatKey];
+                              return { ...prev, fixed: next };
+                            });
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: P.danger,
+                            cursor: "pointer",
+                            fontSize: 16,
+                            padding: 2,
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <button onClick={doArrange} style={{ ...btnAccent, marginTop: 16, width: "100%" }}>
+          配置する
+        </button>
+      </div>
+    );
+  };
+
+  const renderStep3 = () => (
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: P.text, fontFamily: font }}>
+        配置結果
+      </h2>
+      <p style={{ fontSize: 13, color: P.textLight, marginBottom: 12, fontFamily: font }}>
+        席をクリックして入れ替えられます。2つの席をクリックすると交換されます。
+      </p>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <input
+          type="text"
+          value={className}
+          onChange={(e) => setClassName(e.target.value)}
+          placeholder="クラス名（印刷用・任意）"
+          style={{
+            padding: "7px 12px",
+            borderRadius: 8,
+            border: `1.5px solid ${P.border}`,
+            fontFamily: font,
+            fontSize: 13,
+            width: 200,
+            outline: "none",
+          }}
+        />
+        <button onClick={doArrange} style={btnOutline}>
+          再配置
+        </button>
+        <button onClick={handlePrint} style={btnPrimary}>
+          印刷
+        </button>
+      </div>
+
+      <div ref={printRef}>
+        <div
+          style={{
+            textAlign: "center",
+            background: P.primaryLight,
+            border: `2px solid ${P.primary}`,
+            borderRadius: 8,
+            padding: "8px 0",
+            fontWeight: 700,
+            color: P.primary,
+            fontSize: 14,
+            fontFamily: font,
+            marginBottom: 8,
+            maxWidth: Math.min(cols * 96, 600),
+            marginLeft: "auto",
+            marginRight: "auto",
+          }}
+        >
+          黒　板
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${cols}, 1fr)`,
+            gap: 6,
+            maxWidth: Math.min(cols * 96, 600),
+            margin: "0 auto",
+          }}
+        >
+          {Array.from({ length: rows * cols }, (_, idx) => {
+            const r = Math.floor(idx / cols);
+            const c = idx % cols;
+            const key = `${r}-${c}`;
+            const isDis = disabled.has(key);
+            const sid = arrangement[key];
+            const st = sid ? getStudentById(sid) : null;
+
+            if (isDis)
+              return (
+                <div key={key} style={{ ...seatCellStyle(key, true, true), cursor: "default" }} />
+              );
+
+            return (
+              <div
+                key={key}
+                onClick={() => handleSeatClick(key)}
+                style={seatCellStyle(key, false, true)}
+              >
+                {st && (
+                  <>
+                    <span style={{ fontSize: 10, color: P.textLight, fontFamily: font }}>
+                      {st.id}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: P.text,
+                        fontFamily: font,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        maxWidth: "100%",
+                        padding: "0 2px",
+                      }}
+                    >
+                      {displayName(st)}
+                    </span>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <p style={{ textAlign: "center", fontSize: 13, color: P.textLight, marginTop: 4, fontFamily: font }}>
+          ▲ 前 ▲
+        </p>
+      </div>
+      {selectedSeat && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "8px 14px",
+            background: P.accentLight,
+            borderRadius: 8,
+            textAlign: "center",
+            fontSize: 13,
+            fontFamily: font,
+            color: P.accent,
+            fontWeight: 600,
+          }}
+        >
+          {displayName(getStudentById(arrangement[selectedSeat]))}を選択中 — 入れ替え先をクリック
+        </div>
+      )}
+    </div>
+  );
+
+  const btnSmall = {
+    width: 34,
+    height: 34,
+    borderRadius: "50%",
+    border: `2px solid ${P.border}`,
+    background: "#fff",
+    fontSize: 18,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontFamily: font,
+    color: P.text,
+  };
+
+  const btnPrimary = {
+    padding: "9px 20px",
+    borderRadius: 8,
+    border: "none",
+    background: P.primary,
+    color: "#fff",
+    fontWeight: 700,
+    fontSize: 14,
+    cursor: "pointer",
+    fontFamily: font,
+  };
+
+  const btnAccent = {
+    padding: "12px 20px",
+    borderRadius: 10,
+    border: "none",
+    background: P.accent,
+    color: "#fff",
+    fontWeight: 700,
+    fontSize: 16,
+    cursor: "pointer",
+    fontFamily: font,
+    letterSpacing: 2,
+  };
+
+  const btnOutline = {
+    padding: "9px 20px",
+    borderRadius: 8,
+    border: `2px solid ${P.primary}`,
+    background: "transparent",
+    color: P.primary,
+    fontWeight: 700,
+    fontSize: 14,
+    cursor: "pointer",
+    fontFamily: font,
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: P.bg,
+        fontFamily: font,
+        color: P.text,
+      }}
+    >
+      <link
+        href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap"
+        rel="stylesheet"
+      />
+
+      {/* Privacy notice */}
+      {!privacyDismissed && (
+        <div
+          style={{
+            background: "#1a3a44",
+            color: "#e0f0f4",
+            padding: "10px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 12,
+            fontSize: 13,
+            fontFamily: font,
+          }}
+        >
+          <span style={{ fontSize: 16 }}>🔒</span>
+          <span>
+            このアプリはすべてのデータをブラウザ内でのみ処理します。サーバーへの送信は一切ありません。ページを閉じるとデータは消去されます。
+          </span>
+          <button
+            onClick={() => setPrivacyDismissed(true)}
+            style={{
+              background: "rgba(255,255,255,0.15)",
+              border: "none",
+              color: "#fff",
+              borderRadius: 6,
+              padding: "4px 12px",
+              cursor: "pointer",
+              fontSize: 12,
+              fontFamily: font,
+              flexShrink: 0,
+            }}
+          >
+            OK
+          </button>
+        </div>
+      )}
+
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px" }}>
+        <h1
+          style={{
+            textAlign: "center",
+            fontSize: 24,
+            fontWeight: 700,
+            color: P.primary,
+            marginBottom: 24,
+            fontFamily: font,
+          }}
+        >
+          席替えアプリ
+        </h1>
+
+        {renderStepIndicator()}
+
+        <div
+          style={{
+            background: P.card,
+            borderRadius: 16,
+            padding: 24,
+            boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+            border: `1px solid ${P.border}`,
+          }}
+        >
+          {step === 0 && renderStep0()}
+          {step === 1 && renderStep1()}
+          {step === 2 && renderStep2()}
+          {step === 3 && renderStep3()}
+        </div>
+
+        {/* Navigation */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginTop: 16,
+          }}
+        >
+          {step > 0 ? (
+            <button
+              onClick={() => {
+                setStep(step - 1);
+                setSelectedSeat(null);
+                setPairFirst(null);
+                setFixedSelectStudent(null);
+              }}
+              style={btnOutline}
+            >
+              ← 戻る
+            </button>
+          ) : (
+            <div />
+          )}
+          {step < 2 && (
+            <button
+              onClick={() => setStep(step + 1)}
+              disabled={!canProceed()}
+              style={{
+                ...btnPrimary,
+                opacity: canProceed() ? 1 : 0.4,
+              }}
+            >
+              次へ →
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
