@@ -1,1382 +1,494 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>席替えアプリ</title>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#F7F5F0;--card:#FFFFFF;--primary:#3D7A8A;--primaryLight:#E8F4F7;
+  --accent:#E8945A;--accentLight:#FFF3E8;--danger:#D95555;--dangerLight:#FDEAEA;
+  --success:#4A9A6B;--successLight:#E8F5EE;--text:#2D3436;--textLight:#6B7B8D;
+  --border:#E2DFD8;--disabled:#D5D0C8;--seatBg:#F0EDE6;--seatActive:#E8F4F7;
+  --font:'Zen Maru Gothic','BIZ UDPGothic',sans-serif;
+}
+html,body{min-height:100dvh;background:var(--bg);font-family:var(--font);color:var(--text);-webkit-text-size-adjust:100%;}
+button,input,textarea{font-family:var(--font);touch-action:manipulation;}
+button{cursor:pointer;}
+.privacy-bar{background:#1a3a44;color:#e0f0f4;padding:10px 16px;display:flex;align-items:center;justify-content:center;gap:12px;font-size:13px;}
+.privacy-bar button{background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:4px 12px;font-size:12px;flex-shrink:0;}
+.wrap{max-width:640px;margin:0 auto;padding:24px 16px;}
+h1{text-align:center;font-size:24px;font-weight:700;color:var(--primary);margin-bottom:24px;}
+.steps{display:flex;justify-content:center;margin-bottom:28px;}
+.step-item{display:flex;align-items:center;}
+.step-col{display:flex;flex-direction:column;align-items:center;gap:4px;}
+.step-circle{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;transition:background .2s;}
+.step-label{font-size:11px;white-space:nowrap;transition:color .2s;}
+.step-line{width:40px;height:2px;margin:0 4px;margin-bottom:18px;transition:background .2s;}
+.card{background:var(--card);border-radius:16px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,.06);border:1px solid var(--border);}
+.nav{display:flex;justify-content:space-between;margin-top:16px;}
+.btn-sm{width:34px;height:34px;border-radius:50%;border:2px solid var(--border);background:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;color:var(--text);}
+.btn-primary{padding:9px 20px;border-radius:8px;border:none;background:var(--primary);color:#fff;font-weight:700;font-size:14px;}
+.btn-accent{padding:12px 20px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-weight:700;font-size:16px;letter-spacing:2px;width:100%;}
+.btn-outline{padding:9px 20px;border-radius:8px;border:2px solid var(--primary);background:transparent;color:var(--primary);font-weight:700;font-size:14px;}
+.btn-primary:disabled,.btn-accent:disabled{opacity:.4;cursor:default;}
+h2{font-size:18px;font-weight:700;margin-bottom:16px;}
+.desc{font-size:13px;color:var(--textLight);margin-bottom:12px;}
+.rc{display:flex;align-items:center;gap:12px;}
+.rc-label{font-size:14px;font-weight:500;}
+.rc-val{font-size:22px;font-weight:700;min-width:28px;text-align:center;}
+.board{text-align:center;background:var(--primaryLight);border:2px solid var(--primary);border-radius:8px;padding:8px 0;font-weight:700;color:var(--primary);font-size:14px;margin-bottom:8px;margin-left:auto;margin-right:auto;}
+.board-sm{font-size:12px;border-radius:6px;padding:4px 0;margin-bottom:4px;}
+.grid{display:grid;gap:6px;margin:0 auto 8px;}
+.seat{border-radius:8px;border:2px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all .15s ease;min-height:48px;user-select:none;position:relative;touch-action:manipulation;}
+.seat.dis{background:var(--disabled);border-color:transparent;opacity:.5;}
+.seat.dis-result{background:var(--disabled);border-color:transparent;cursor:default;opacity:1;}
+.front-label{text-align:center;font-size:13px;color:var(--textLight);margin-top:4px;}
+.seat-count{margin-top:16px;padding:10px 16px;background:var(--successLight);border-radius:8px;text-align:center;font-size:15px;font-weight:700;color:var(--success);}
+.paste-area{width:100%;padding:12px;border-radius:8px;border:1.5px solid var(--border);font-size:14px;resize:vertical;outline:none;}
+.name-list{max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:4px;}
+.name-row{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(226,223,216,.13);}
+.name-num{width:30px;height:30px;border-radius:50%;background:var(--primaryLight);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:var(--primary);flex-shrink:0;}
+.name-input{flex:1;padding:6px 10px;border-radius:6px;border:1.5px solid rgba(226,223,216,.27);font-size:14px;outline:none;background:transparent;}
+.cond-tabs{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap;}
+.cond-tab{padding:8px 14px;border-radius:8px;border:2px solid var(--border);background:transparent;color:var(--textLight);font-weight:700;font-size:13px;position:relative;transition:all .15s;}
+.cond-tab.active{border-color:var(--primary);background:var(--primaryLight);color:var(--primary);}
+.cond-badge{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:700;}
+.cond-body{background:var(--bg);border-radius:10px;padding:14px;min-height:200px;}
+.chip{padding:6px 12px;border-radius:20px;border:2px solid var(--border);background:#fff;color:var(--text);font-size:13px;font-weight:400;transition:all .15s;touch-action:manipulation;}
+.chip.on{border-color:var(--primary);background:var(--primary);color:#fff;font-weight:700;}
+.chip.sel{border-color:var(--accent);background:var(--accentLight);color:var(--accent);font-weight:700;}
+.chips{display:flex;flex-wrap:wrap;gap:6px;}
+.pair-tag{padding:3px 10px;border-radius:12px;font-weight:600;font-size:13px;display:inline-flex;align-items:center;}
+.pair-tag.cant{background:var(--dangerLight);color:var(--danger);}
+.pair-tag.should{background:var(--successLight);color:var(--success);}
+.pair-tag.fixed{background:var(--accentLight);color:var(--accent);}
+.pair-rm{background:none;border:none;color:var(--danger);font-size:16px;padding:2px;margin-left:6px;}
+.pair-list{border-top:1px solid var(--border);padding-top:10px;margin-top:10px;}
+.pair-row{display:flex;align-items:center;gap:8px;padding:4px 0;}
+.result-seat{min-height:64px;border:2px solid var(--primary);background:var(--seatActive);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;user-select:none;touch-action:manipulation;}
+.result-seat.selected{border-color:var(--accent);background:var(--accentLight);transform:scale(1.06);box-shadow:0 0 0 3px rgba(232,148,90,.27);}
+.sel-msg{margin-top:12px;padding:8px 14px;background:var(--accentLight);border-radius:8px;text-align:center;font-size:13px;color:var(--accent);font-weight:600;}
+.result-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
+.class-input{padding:7px 12px;border-radius:8px;border:1.5px solid var(--border);font-size:13px;width:200px;outline:none;}
+.mini-seat{border-radius:6px;border:1.5px solid var(--border);padding:4px 2px;text-align:center;min-height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:all .15s;}
+.mini-seat.dis{background:var(--disabled);border-color:transparent;opacity:.4;}
+.mini-seat.fixed-seat{border-color:var(--accent);background:var(--accentLight);cursor:pointer;}
+.mini-seat.pick{border-color:var(--primary);background:var(--primaryLight);cursor:pointer;}
+</style>
+</head>
+<body>
+<div id="privacy" class="privacy-bar">
+  <span style="font-size:16px">🔒</span>
+  <span>このアプリはすべてのデータをブラウザ内でのみ処理します。サーバーへの送信は一切ありません。ページを閉じるとデータは消去されます。</span>
+  <button onclick="document.getElementById('privacy').style.display='none'">OK</button>
+</div>
+<div class="wrap">
+  <h1>席替えアプリ</h1>
+  <div id="stepIndicator" class="steps"></div>
+  <div id="mainCard" class="card"></div>
+  <div id="navArea" class="nav"></div>
+</div>
+<script>
+'use strict';
+// ─── State ───
+const S = {
+  step:0, rows:6, cols:6,
+  disabled: new Set(),
+  students: [],
+  pasteText:'', pasted:false,
+  conditions:{ frontOnly:new Set(), frontThree:new Set(), fixed:{}, cantAdj:[], shouldAdj:[] },
+  arrangement:{},
+  arrangeWarning:'',
+  selectedSeat:null,
+  condTab:0,
+  pairFirst:null,
+  fixedSelectStudent:null,
+  className:''
+};
+const STEPS=['座席設定','名簿作成','条件設定','配置結果'];
 
-const STEPS = ["座席設定", "名簿作成", "条件設定", "配置結果"];
-
-function shuffle(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
+function dn(s){return s&&s.name&&s.name.trim()?s.name:s?s.id+'番':'';}
+function byId(id){return S.students.find(s=>s.id===id);}
+function avail(){
+  const a=[];
+  for(let r=0;r<S.rows;r++) for(let c=0;c<S.cols;c++) if(!S.disabled.has(r+'-'+c)) a.push({r,c});
   return a;
 }
+function shuffle(a){const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
+function adjKeys(r,c){return[r+'-'+(c-1),r+'-'+(c+1)];}
+function findSeat(arr,sid){for(const[k,id]of Object.entries(arr)){if(id===sid){const[r,c]=k.split('-').map(Number);return{r,c,key:k};}}return null;}
 
-function getAdjacentKeys(r, c) {
-  return [`${r}-${c - 1}`, `${r}-${c + 1}`];
+function generate(){
+  const seats=avail(), cond=S.conditions, result={}, placed=new Set();
+  const isAdj=(a,b)=>a.r===b.r&&Math.abs(a.c-b.c)===1;
+  const taken=s=>!!result[s.r+'-'+s.c];
+  const fixedIds=new Set(Object.values(cond.fixed));
+  // 0 fixed
+  for(const[k,v]of Object.entries(cond.fixed)){result[k]=v;placed.add(v);}
+  // 1 shouldAdj
+  for(const[id1,id2]of cond.shouldAdj){
+    if(placed.has(id1)||placed.has(id2))continue;
+    const ps=[];
+    for(const s1 of shuffle(seats)){if(taken(s1))continue;for(const s2 of seats){if(s1===s2||taken(s2)||!isAdj(s1,s2))continue;
+      let ok=true;
+      if(cond.frontOnly.has(id1)&&s1.r!==0)ok=false;if(cond.frontOnly.has(id2)&&s2.r!==0)ok=false;
+      if(cond.frontThree.has(id1)&&s1.r>=3)ok=false;if(cond.frontThree.has(id2)&&s2.r>=3)ok=false;
+      if(ok)ps.push([s1,s2]);
+    }}
+    if(ps.length){const[a,b]=ps[Math.floor(Math.random()*ps.length)];result[a.r+'-'+a.c]=id1;result[b.r+'-'+b.c]=id2;placed.add(id1);placed.add(id2);}
+  }
+  // 2 frontOnly
+  for(const id of cond.frontOnly){if(placed.has(id))continue;const a=shuffle(seats.filter(s=>s.r===0&&!taken(s)));if(a.length){result[a[0].r+'-'+a[0].c]=id;placed.add(id);}}
+  // 3 frontThree
+  for(const id of cond.frontThree){if(placed.has(id))continue;const a=shuffle(seats.filter(s=>s.r<3&&!taken(s)));if(a.length){result[a[0].r+'-'+a[0].c]=id;placed.add(id);}}
+  // 4 random
+  const rem=shuffle(S.students.filter(s=>!placed.has(s.id)));
+  const rs=shuffle(seats.filter(s=>!taken(s)));
+  rem.forEach((st,i)=>{if(i<rs.length)result[rs[i].r+'-'+rs[i].c]=st.id;});
+  // 5 fix cantAdj
+  let success=true;
+  for(let it=0;it<100;it++){let ok=true;
+    for(const[id1,id2]of cond.cantAdj){const s1=findSeat(result,id1),s2=findSeat(result,id2);
+      if(s1&&s2&&isAdj(s1,s2)){ok=false;
+        const others=seats.filter(s=>result[s.r+'-'+s.c]&&result[s.r+'-'+s.c]!==id1&&result[s.r+'-'+s.c]!==id2&&!fixedIds.has(result[s.r+'-'+s.c]));
+        let sw=false;
+        if(!fixedIds.has(id1)){for(const c of shuffle(others)){const cid=result[c.r+'-'+c.c];const ak=adjKeys(c.r,c.c);if(ak.some(k=>result[k]===id2))continue;
+          let ro=true;if(cond.frontOnly.has(id1)&&c.r!==0)ro=false;if(cond.frontOnly.has(cid)&&s1.r!==0)ro=false;if(cond.frontThree.has(id1)&&c.r>=3)ro=false;if(cond.frontThree.has(cid)&&s1.r>=3)ro=false;
+          if(ro){result[c.r+'-'+c.c]=id1;result[s1.r+'-'+s1.c]=cid;sw=true;break;}}}
+        if(!sw&&!fixedIds.has(id2)){for(const c of shuffle(others)){const cid=result[c.r+'-'+c.c];const ak=adjKeys(c.r,c.c);if(ak.some(k=>result[k]===id1))continue;
+          let ro=true;if(cond.frontOnly.has(id2)&&c.r!==0)ro=false;if(cond.frontOnly.has(cid)&&s2.r!==0)ro=false;if(cond.frontThree.has(id2)&&c.r>=3)ro=false;if(cond.frontThree.has(cid)&&s2.r>=3)ro=false;
+          if(ro){result[c.r+'-'+c.c]=id2;result[s2.r+'-'+s2.c]=cid;break;}}}
+      }}if(ok){success=true;break;}else{success=false;}}
+  return{result,success};
 }
 
-function findSeatOf(arrangement, studentId) {
-  for (const [key, id] of Object.entries(arrangement)) {
-    if (id === studentId) {
-      const [r, c] = key.split("-").map(Number);
-      return { r, c, key };
-    }
+// ─── Render helpers ───
+function h(tag,attrs,children){
+  const el=document.createElement(tag);
+  if(attrs)for(const[k,v]of Object.entries(attrs)){
+    if(k==='onclick')el.addEventListener('click',v);
+    else if(k==='oninput')el.addEventListener('input',v);
+    else if(k==='className')el.className=v;
+    else if(k==='style'&&typeof v==='string')el.style.cssText=v;
+    else el.setAttribute(k,v);
   }
-  return null;
+  if(children!=null){
+    if(Array.isArray(children))children.forEach(c=>{if(c!=null)el.appendChild(typeof c==='string'?document.createTextNode(c):c);});
+    else if(typeof children==='string')el.textContent=children;
+    else el.appendChild(children);
+  }
+  return el;
 }
 
-function generateArrangement(students, availableSeats, conditions, rows) {
-  const result = {};
-  const placed = new Set();
-  const frontSeats = availableSeats.filter((s) => s.r === 0);
-  const front3Seats = availableSeats.filter((s) => s.r < 3);
-  const isAdj = (s1, s2) => s1.r === s2.r && Math.abs(s1.c - s2.c) === 1;
-  const isTaken = (s) => !!result[`${s.r}-${s.c}`];
-  const fixedIds = new Set(Object.values(conditions.fixed));
+function render(){
+  renderSteps();
+  const card=document.getElementById('mainCard');
+  card.innerHTML='';
+  if(S.step===0)card.appendChild(renderStep0());
+  else if(S.step===1)card.appendChild(renderStep1());
+  else if(S.step===2)card.appendChild(renderStep2());
+  else if(S.step===3)card.appendChild(renderStep3());
+  renderNav();
+}
 
-  // 0. Fixed placement
-  for (const [seatKey, studentId] of Object.entries(conditions.fixed)) {
-    result[seatKey] = studentId;
-    placed.add(studentId);
-  }
-
-  // 1. shouldAdj pairs
-  for (const [id1, id2] of conditions.shouldAdj) {
-    if (placed.has(id1) || placed.has(id2)) continue;
-    const pairs = [];
-    for (const s1 of shuffle(availableSeats)) {
-      if (isTaken(s1)) continue;
-      for (const s2 of availableSeats) {
-        if (s1 === s2 || isTaken(s2)) continue;
-        if (!isAdj(s1, s2)) continue;
-        let ok = true;
-        if (conditions.frontOnly.has(id1) && s1.r !== 0) ok = false;
-        if (conditions.frontOnly.has(id2) && s2.r !== 0) ok = false;
-        if (conditions.frontThree.has(id1) && s1.r >= 3) ok = false;
-        if (conditions.frontThree.has(id2) && s2.r >= 3) ok = false;
-        if (ok) pairs.push([s1, s2]);
-      }
-    }
-    if (pairs.length > 0) {
-      const [s1, s2] = pairs[Math.floor(Math.random() * pairs.length)];
-      result[`${s1.r}-${s1.c}`] = id1;
-      result[`${s2.r}-${s2.c}`] = id2;
-      placed.add(id1);
-      placed.add(id2);
-    }
-  }
-
-  // 2. frontOnly
-  for (const id of conditions.frontOnly) {
-    if (placed.has(id)) continue;
-    const avail = shuffle(frontSeats.filter((s) => !isTaken(s)));
-    if (avail.length > 0) {
-      result[`${avail[0].r}-${avail[0].c}`] = id;
-      placed.add(id);
-    }
-  }
-
-  // 3. frontThree
-  for (const id of conditions.frontThree) {
-    if (placed.has(id)) continue;
-    const avail = shuffle(front3Seats.filter((s) => !isTaken(s)));
-    if (avail.length > 0) {
-      result[`${avail[0].r}-${avail[0].c}`] = id;
-      placed.add(id);
-    }
-  }
-
-  // 4. Remaining random
-  const remaining = shuffle(students.filter((s) => !placed.has(s.id)));
-  const remainSeats = shuffle(availableSeats.filter((s) => !isTaken(s)));
-  remaining.forEach((student, i) => {
-    if (i < remainSeats.length) {
-      result[`${remainSeats[i].r}-${remainSeats[i].c}`] = student.id;
-    }
+function renderSteps(){
+  const el=document.getElementById('stepIndicator');el.innerHTML='';
+  STEPS.forEach((label,i)=>{
+    const item=h('div',{className:'step-item'},[
+      h('div',{className:'step-col'},[
+        h('div',{className:'step-circle',style:`background:${i<=S.step?'var(--primary)':'var(--border)'};color:${i<=S.step?'#fff':'var(--textLight)'}`},''+(i+1)),
+        h('span',{className:'step-label',style:`color:${i<=S.step?'var(--primary)':'var(--textLight)'};font-weight:${i===S.step?700:400}`},label)
+      ])
+    ]);
+    if(i<STEPS.length-1) item.appendChild(h('div',{className:'step-line',style:`background:${i<S.step?'var(--primary)':'var(--border)'}`}));
+    el.appendChild(item);
   });
-
-  // 5. Fix cantAdj (never swap fixed students)
-  for (let iter = 0; iter < 100; iter++) {
-    let allOk = true;
-    for (const [id1, id2] of conditions.cantAdj) {
-      const s1 = findSeatOf(result, id1);
-      const s2 = findSeatOf(result, id2);
-      if (s1 && s2 && isAdj(s1, s2)) {
-        allOk = false;
-        const others = availableSeats.filter(
-          (s) =>
-            result[`${s.r}-${s.c}`] &&
-            result[`${s.r}-${s.c}`] !== id1 &&
-            result[`${s.r}-${s.c}`] !== id2 &&
-            !fixedIds.has(result[`${s.r}-${s.c}`])
-        );
-        let swapped = false;
-        if (!fixedIds.has(id1)) {
-          for (const cand of shuffle(others)) {
-            const candId = result[`${cand.r}-${cand.c}`];
-            const adjOfCand = getAdjacentKeys(cand.r, cand.c);
-            const wouldViolate = adjOfCand.some((ak) => result[ak] === id2);
-            let rowOk = true;
-            if (conditions.frontOnly.has(id1) && cand.r !== 0) rowOk = false;
-            if (conditions.frontOnly.has(candId) && s1.r !== 0) rowOk = false;
-            if (conditions.frontThree.has(id1) && cand.r >= 3) rowOk = false;
-            if (conditions.frontThree.has(candId) && s1.r >= 3) rowOk = false;
-            if (!wouldViolate && rowOk) {
-              result[`${cand.r}-${cand.c}`] = id1;
-              result[`${s1.r}-${s1.c}`] = candId;
-              swapped = true;
-              break;
-            }
-          }
-        }
-        if (!swapped && !fixedIds.has(id2)) {
-          for (const cand of shuffle(others)) {
-            const candId = result[`${cand.r}-${cand.c}`];
-            const adjOfCand = getAdjacentKeys(cand.r, cand.c);
-            const wouldViolate = adjOfCand.some((ak) => result[ak] === id1);
-            let rowOk = true;
-            if (conditions.frontOnly.has(id2) && cand.r !== 0) rowOk = false;
-            if (conditions.frontOnly.has(candId) && s2.r !== 0) rowOk = false;
-            if (conditions.frontThree.has(id2) && cand.r >= 3) rowOk = false;
-            if (conditions.frontThree.has(candId) && s2.r >= 3) rowOk = false;
-            if (!wouldViolate && rowOk) {
-              result[`${cand.r}-${cand.c}`] = id2;
-              result[`${s2.r}-${s2.c}`] = candId;
-              break;
-            }
-          }
-        }
-      }
-    }
-    if (allOk) break;
-  }
-
-  return result;
 }
 
-const P = {
-  bg: "#F7F5F0",
-  card: "#FFFFFF",
-  primary: "#3D7A8A",
-  primaryLight: "#E8F4F7",
-  primaryDark: "#2B5A66",
-  accent: "#E8945A",
-  accentLight: "#FFF3E8",
-  danger: "#D95555",
-  dangerLight: "#FDEAEA",
-  success: "#4A9A6B",
-  successLight: "#E8F5EE",
-  text: "#2D3436",
-  textLight: "#6B7B8D",
-  border: "#E2DFD8",
-  disabled: "#D5D0C8",
-  seatBg: "#F0EDE6",
-  seatActive: "#E8F4F7",
-};
-
-const font = `'Zen Maru Gothic', 'BIZ UDPGothic', sans-serif`;
-
-export default function SeatArrangerApp() {
-  const [step, setStep] = useState(0);
-  const [rows, setRows] = useState(6);
-  const [cols, setCols] = useState(6);
-  const [disabled, setDisabled] = useState(new Set());
-  const [students, setStudents] = useState([]);
-  const [pasteText, setPasteText] = useState("");
-  const [pasted, setPasted] = useState(false);
-  const [conditions, setConditions] = useState({
-    frontOnly: new Set(),
-    frontThree: new Set(),
-    fixed: {},
-    cantAdj: [],
-    shouldAdj: [],
-  });
-  const [arrangement, setArrangement] = useState({});
-  const [selectedSeat, setSelectedSeat] = useState(null);
-  const [condTab, setCondTab] = useState(0);
-  const [pairFirst, setPairFirst] = useState(null);
-  const [fixedSelectStudent, setFixedSelectStudent] = useState(null);
-  const [privacyDismissed, setPrivacyDismissed] = useState(false);
-  const [className, setClassName] = useState("");
-  const printRef = useRef(null);
-
-  const availableSeats = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (!disabled.has(`${r}-${c}`)) availableSeats.push({ r, c });
-    }
+function renderNav(){
+  const nav=document.getElementById('navArea');nav.innerHTML='';
+  if(S.step>0){
+    nav.appendChild(h('button',{className:'btn-outline',onclick:()=>{S.step--;S.selectedSeat=null;S.pairFirst=null;S.fixedSelectStudent=null;render();}},'← 戻る'));
+  } else nav.appendChild(h('div'));
+  if(S.step<2){
+    const ok=S.step===0?avail().length>=1:S.students.length>0;
+    const b=h('button',{className:'btn-primary',onclick:()=>{
+      if(S.step===0){
+        const n=avail().length;
+        if(S.students.length!==n){
+          if(S.students.length>n){S.students=S.students.slice(0,n).map((s,i)=>({...s,id:i+1}));}
+          else{const toAdd=n-S.students.length;for(let i=0;i<toAdd;i++)S.students.push({id:0,name:''});S.students=S.students.map((s,i)=>({...s,id:i+1}));}
+        }
+      }
+      S.step++;render();
+    }},'次へ →');
+    if(!ok){b.disabled=true;b.style.opacity='.4';}
+    nav.appendChild(b);
   }
-  const seatCount = availableSeats.length;
+}
 
-  const initStudents = useCallback(() => {
-    setStudents(
-      Array.from({ length: seatCount }, (_, i) => ({
-        id: i + 1,
-        name: "",
-      }))
-    );
-    setPasted(false);
-    setPasteText("");
-  }, [seatCount]);
+// ─── Step 0 ───
+function renderStep0(){
+  const f=document.createDocumentFragment();
+  f.appendChild(h('h2',{},'座席の列と行を設定'));
+  const controls=h('div',{style:'display:flex;gap:32px;margin-bottom:20px;flex-wrap:wrap'});
+  [['行（前後）','rows'],['列（左右）','cols']].forEach(([label,key])=>{
+    const row=h('div',{className:'rc'});
+    row.appendChild(h('span',{className:'rc-label'},label));
+    row.appendChild(h('button',{className:'btn-sm',onclick:()=>{S[key]=Math.max(1,S[key]-1);render();}},'−'));
+    row.appendChild(h('span',{className:'rc-val'},''+S[key]));
+    row.appendChild(h('button',{className:'btn-sm',onclick:()=>{S[key]=Math.min(10,S[key]+1);render();}},'＋'));
+    controls.appendChild(row);
+  });
+  f.appendChild(controls);
+  f.appendChild(h('p',{className:'desc'},'児童が座らない席をクリックしてください（グレーになります）'));
+  const brd=h('div',{className:'board',style:`max-width:${S.cols*72}px`},'黒　板');
+  f.appendChild(brd);
+  const grid=h('div',{className:'grid',style:`grid-template-columns:repeat(${S.cols},1fr);max-width:${S.cols*72}px`});
+  for(let r=0;r<S.rows;r++)for(let c=0;c<S.cols;c++){
+    const key=r+'-'+c, isDis=S.disabled.has(key);
+    const cell=h('div',{className:'seat'+(isDis?' dis':''),onclick:(()=>{const k=key;return()=>{if(S.disabled.has(k))S.disabled.delete(k);else S.disabled.add(k);render();}})()},
+      isDis?h('span',{style:'font-size:18px;color:#aaa'},'✕'):h('span',{style:'font-size:11px;color:var(--textLight)'},(r+1)+'-'+(c+1)));
+    if(!isDis)cell.style.background='var(--seatBg)';
+    grid.appendChild(cell);
+  }
+  f.appendChild(grid);
+  f.appendChild(h('p',{className:'front-label'},'▲ 前 ▲'));
+  f.appendChild(h('div',{className:'seat-count'},'座席数：'+avail().length+'人分'));
+  return f;
+}
 
-  useEffect(() => {
-    if (step === 1 && students.length !== seatCount) initStudents();
-  }, [step, seatCount, initStudents, students.length]);
+// ─── Step 1 ───
+function renderStep1(){
+  const n=avail().length;
+  if(S.students.length!==n){
+    if(S.students.length>n){S.students=S.students.slice(0,n).map((s,i)=>({...s,id:i+1}));}
+    else{const toAdd=n-S.students.length;for(let i=0;i<toAdd;i++)S.students.push({id:0,name:''});S.students=S.students.map((s,i)=>({...s,id:i+1}));}
+  }
+  const f=document.createDocumentFragment();
+  f.appendChild(h('h2',{},'名簿作成（'+n+'人）'));
+  f.appendChild(h('p',{className:'desc'},'スプレッドシートからコピーした名前をまとめて貼り付けるか、1人ずつ入力してください。名前の入力は任意です。'));
+  const pw=h('div',{style:'margin-bottom:16px'});
+  const ta=h('textarea',{className:'paste-area',rows:'5',placeholder:'名前を1行ずつ貼り付け\n例：\n田中太郎\n山田花子\n佐藤次郎',oninput:e=>{S.pasteText=e.target.value;}});
+  ta.value=S.pasteText;
+  pw.appendChild(ta);
+  const pb=h('button',{className:'btn-primary',style:'margin-top:8px',onclick:()=>{
+    const lines=S.pasteText.split(/[\n\r]+/).map(l=>l.split(/\t/)[0].trim()).filter(l=>l);
+    S.students.forEach((s,i)=>{if(i<lines.length)s.name=lines[i];});
+    render();
+  }},'貼り付けを反映');
+  if(!S.pasteText.trim()){pb.disabled=true;pb.style.opacity='.4';}
+  pw.appendChild(pb);
+  f.appendChild(pw);
+  const list=h('div',{className:'name-list'});
+  S.students.forEach(s=>{
+    const row=h('div',{className:'name-row'});
+    row.appendChild(h('span',{className:'name-num'},''+s.id));
+    const inp=h('input',{className:'name-input',type:'text',placeholder:s.id+'番（名前は任意）',oninput:((sid)=>e=>{const st=S.students.find(x=>x.id===sid);if(st)st.name=e.target.value;})(s.id)});
+    inp.value=s.name;
+    row.appendChild(inp);
+    list.appendChild(row);
+  });
+  f.appendChild(list);
+  return f;
+}
 
-  const applyPaste = () => {
-    const lines = pasteText
-      .split(/[\n\r]+/)
-      .map((l) => l.split(/\t/)[0].trim())
-      .filter((l) => l);
-    setStudents((prev) =>
-      prev.map((s, i) => ({ ...s, name: i < lines.length ? lines[i] : s.name }))
-    );
-    setPasted(true);
-  };
-
-  const updateStudentName = (id, name) => {
-    setStudents((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
-  };
-
-  const toggleCondition = (type, id) => {
-    setConditions((prev) => {
-      const next = { ...prev, [type]: new Set(prev[type]) };
-      if (next[type].has(id)) next[type].delete(id);
-      else next[type].add(id);
-      return next;
-    });
-  };
-
-  const addPair = (type, id) => {
-    if (pairFirst === null) {
-      setPairFirst(id);
-    } else {
-      if (pairFirst !== id) {
-        const exists = conditions[type].some(
-          ([a, b]) =>
-            (a === pairFirst && b === id) || (a === id && b === pairFirst)
-        );
-        if (!exists) {
-          setConditions((prev) => ({
-            ...prev,
-            [type]: [...prev[type], [pairFirst, id]],
-          }));
-        }
-      }
-      setPairFirst(null);
-    }
-  };
-
-  const removePair = (type, idx) => {
-    setConditions((prev) => ({
-      ...prev,
-      [type]: prev[type].filter((_, i) => i !== idx),
-    }));
-  };
-
-  const doArrange = () => {
-    const result = generateArrangement(students, availableSeats, conditions, rows);
-    setArrangement(result);
-    setSelectedSeat(null);
-    setStep(3);
-  };
-
-  const handleSeatClick = (key) => {
-    if (!arrangement[key]) return;
-    if (selectedSeat === null) {
-      setSelectedSeat(key);
-    } else if (selectedSeat === key) {
-      setSelectedSeat(null);
-    } else {
-      const newArr = { ...arrangement };
-      const temp = newArr[selectedSeat];
-      newArr[selectedSeat] = newArr[key];
-      newArr[key] = temp;
-      setArrangement(newArr);
-      setSelectedSeat(null);
-    }
-  };
-
-  const getStudentById = (id) => students.find((s) => s.id === id);
-  const displayName = (s) => (s?.name?.trim() ? s.name : `${s?.id}番`);
-
-  const handlePrint = () => {
-    const el = printRef.current;
-    if (!el) return;
-    const w = window.open("", "_blank");
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-      <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
-      <title>座席表</title><style>
-      * { margin:0; padding:0; box-sizing:border-box; }
-      body { font-family:'Zen Maru Gothic',sans-serif; padding:20mm; }
-      .title { text-align:center; font-size:20pt; font-weight:700; margin-bottom:4mm; }
-      .date { text-align:right; font-size:10pt; color:#666; margin-bottom:6mm; }
-      .teacher { text-align:center; background:#E8F4F7; border:2px solid #3D7A8A; border-radius:6px; padding:4mm; font-size:11pt; font-weight:700; color:#3D7A8A; margin-bottom:6mm; max-width: 160mm; margin-left:auto; margin-right:auto; }
-      .grid { display:grid; grid-template-columns:repeat(${cols},1fr); gap:3mm; max-width:180mm; margin:0 auto; }
-      .seat { border:1.5px solid #ccc; border-radius:5px; padding:3mm; text-align:center; min-height:14mm; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-      .seat.disabled { background:#f0f0f0; border-color:#e0e0e0; }
-      .seat .num { font-size:8pt; color:#999; }
-      .seat .name { font-size:11pt; font-weight:700; margin-top:1mm; }
-      .front-label { text-align:center; font-size:9pt; color:#999; margin-top:4mm; }
-      </style></head><body>
-      <div class="title">${className || "座席表"}</div>
-      <div class="date">${new Date().toLocaleDateString("ja-JP")}</div>
-      <div class="teacher">黒　板</div>
-      <div class="grid">`);
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const key = `${r}-${c}`;
-        if (disabled.has(key)) {
-          w.document.write(`<div class="seat disabled"></div>`);
-        } else {
-          const sid = arrangement[key];
-          const st = sid ? getStudentById(sid) : null;
-          w.document.write(
-            `<div class="seat"><span class="num">${st ? st.id : ""}</span><span class="name">${st ? (st.name.trim() || st.id + "番") : ""}</span></div>`
-          );
-        }
-      }
-    }
-    w.document.write(`</div><div class="front-label">▲ 前 ▲</div></body></html>`);
-    w.document.close();
-    setTimeout(() => w.print(), 400);
-  };
-
-  const canProceed = () => {
-    if (step === 0) return seatCount >= 1;
-    if (step === 1) return students.length > 0;
-    return true;
-  };
-
-  const seatCellStyle = (key, isDisabled, isResult) => {
-    const base = {
-      borderRadius: 8,
-      border: "2px solid",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      cursor: isResult ? "pointer" : "pointer",
-      transition: "all 0.15s ease",
-      fontFamily: font,
-      minHeight: isResult ? 64 : 48,
-      userSelect: "none",
-      position: "relative",
-    };
-    if (isResult) {
-      const isSelected = selectedSeat === key;
-      return {
-        ...base,
-        background: isDisabled
-          ? P.disabled
-          : isSelected
-            ? P.accentLight
-            : P.seatActive,
-        borderColor: isDisabled
-          ? "transparent"
-          : isSelected
-            ? P.accent
-            : P.primary,
-        transform: isSelected ? "scale(1.06)" : "none",
-        boxShadow: isSelected ? `0 0 0 3px ${P.accent}44` : "none",
-      };
-    }
-    return {
-      ...base,
-      background: isDisabled ? P.disabled : P.seatBg,
-      borderColor: isDisabled ? "transparent" : P.border,
-      opacity: isDisabled ? 0.5 : 1,
-    };
-  };
-
-  // ─── Render ─────────────────────────────────────────
-  const renderStepIndicator = () => (
-    <div style={{ display: "flex", justifyContent: "center", gap: 0, marginBottom: 28 }}>
-      {STEPS.map((label, i) => (
-        <div
-          key={i}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 0,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                background: i <= step ? P.primary : P.border,
-                color: i <= step ? "#fff" : P.textLight,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 700,
-                fontSize: 14,
-                fontFamily: font,
-              }}
-            >
-              {i + 1}
-            </div>
-            <span
-              style={{
-                fontSize: 11,
-                color: i <= step ? P.primary : P.textLight,
-                fontWeight: i === step ? 700 : 400,
-                fontFamily: font,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {label}
-            </span>
-          </div>
-          {i < STEPS.length - 1 && (
-            <div
-              style={{
-                width: 40,
-                height: 2,
-                background: i < step ? P.primary : P.border,
-                marginBottom: 18,
-                marginLeft: 4,
-                marginRight: 4,
-              }}
-            />
-          )}
-        </div>
-      ))}
-    </div>
-  );
-
-  const renderStep0 = () => (
-    <div>
-      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, color: P.text, fontFamily: font }}>
-        座席の列と行を設定
-      </h2>
-      <div style={{ display: "flex", gap: 32, marginBottom: 20, flexWrap: "wrap" }}>
-        {[
-          ["行（前後）", rows, setRows],
-          ["列（左右）", cols, setCols],
-        ].map(([label, val, set]) => (
-          <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 14, color: P.text, fontFamily: font, fontWeight: 500 }}>
-              {label}
-            </span>
-            <button
-              onClick={() => set(Math.max(1, val - 1))}
-              style={btnSmall}
-            >
-              −
-            </button>
-            <span style={{ fontSize: 22, fontWeight: 700, minWidth: 28, textAlign: "center", fontFamily: font }}>
-              {val}
-            </span>
-            <button
-              onClick={() => set(Math.min(10, val + 1))}
-              style={btnSmall}
-            >
-              ＋
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <p style={{ fontSize: 13, color: P.textLight, marginBottom: 12, fontFamily: font }}>
-        児童が座らない席をクリックしてください（グレーになります）
-      </p>
-
-      <div
-        style={{
-          textAlign: "center",
-          background: P.primaryLight,
-          border: `2px solid ${P.primary}`,
-          borderRadius: 8,
-          padding: "8px 0",
-          fontWeight: 700,
-          color: P.primary,
-          fontSize: 14,
-          fontFamily: font,
-          marginBottom: 8,
-          maxWidth: cols * 72,
-          marginLeft: "auto",
-          marginRight: "auto",
-        }}
-      >
-        黒　板
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(${cols}, 1fr)`,
-          gap: 6,
-          maxWidth: cols * 72,
-          margin: "0 auto 8px",
-        }}
-      >
-        {Array.from({ length: rows * cols }, (_, idx) => {
-          const r = Math.floor(idx / cols);
-          const c = idx % cols;
-          const key = `${r}-${c}`;
-          const isDis = disabled.has(key);
-          return (
-            <div
-              key={key}
-              onClick={() => {
-                setDisabled((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(key)) next.delete(key);
-                  else next.add(key);
-                  return next;
-                });
-              }}
-              style={seatCellStyle(key, isDis, false)}
-            >
-              {isDis ? (
-                <span style={{ fontSize: 18, color: "#aaa" }}>✕</span>
-              ) : (
-                <span style={{ fontSize: 11, color: P.textLight, fontFamily: font }}>
-                  {r + 1}-{c + 1}
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <p style={{ textAlign: "center", fontSize: 13, color: P.textLight, marginTop: 4, fontFamily: font }}>
-        ▲ 前 ▲
-      </p>
-
-      <div
-        style={{
-          marginTop: 16,
-          padding: "10px 16px",
-          background: P.successLight,
-          borderRadius: 8,
-          textAlign: "center",
-          fontFamily: font,
-          fontSize: 15,
-          fontWeight: 700,
-          color: P.success,
-        }}
-      >
-        座席数：{seatCount}人分
-      </div>
-    </div>
-  );
-
-  const renderStep1 = () => (
-    <div>
-      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: P.text, fontFamily: font }}>
-        名簿作成（{seatCount}人）
-      </h2>
-      <p style={{ fontSize: 13, color: P.textLight, marginBottom: 12, fontFamily: font }}>
-        スプレッドシートからコピーした名前をまとめて貼り付けるか、1人ずつ入力してください。名前の入力は任意です。
-      </p>
-
-      {!pasted && (
-        <div style={{ marginBottom: 16 }}>
-          <textarea
-            value={pasteText}
-            onChange={(e) => setPasteText(e.target.value)}
-            placeholder={"名前を1行ずつ貼り付け\n例：\n田中太郎\n山田花子\n佐藤次郎"}
-            rows={5}
-            style={{
-              width: "100%",
-              padding: 12,
-              borderRadius: 8,
-              border: `1.5px solid ${P.border}`,
-              fontFamily: font,
-              fontSize: 14,
-              resize: "vertical",
-              outline: "none",
-            }}
-          />
-          <button
-            onClick={applyPaste}
-            disabled={!pasteText.trim()}
-            style={{
-              ...btnPrimary,
-              marginTop: 8,
-              opacity: pasteText.trim() ? 1 : 0.4,
-            }}
-          >
-            貼り付けを反映
-          </button>
-        </div>
-      )}
-
-      <div
-        style={{
-          maxHeight: 360,
-          overflowY: "auto",
-          border: `1px solid ${P.border}`,
-          borderRadius: 10,
-          padding: 4,
-        }}
-      >
-        {students.map((s) => (
-          <div
-            key={s.id}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "6px 10px",
-              borderBottom: `1px solid ${P.border}22`,
-            }}
-          >
-            <span
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: "50%",
-                background: P.primaryLight,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 700,
-                fontSize: 13,
-                color: P.primary,
-                fontFamily: font,
-                flexShrink: 0,
-              }}
-            >
-              {s.id}
-            </span>
-            <input
-              type="text"
-              value={s.name}
-              onChange={(e) => updateStudentName(s.id, e.target.value)}
-              placeholder={`${s.id}番（名前は任意）`}
-              style={{
-                flex: 1,
-                padding: "6px 10px",
-                borderRadius: 6,
-                border: `1.5px solid ${P.border}44`,
-                fontFamily: font,
-                fontSize: 14,
-                outline: "none",
-                background: "transparent",
-              }}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const condTabs = [
-    { label: "一番前", key: "frontOnly", type: "toggle" },
-    { label: "前3列まで", key: "frontThree", type: "toggle" },
-    { label: "固定配置", key: "fixed", type: "fixed" },
-    { label: "隣にしない", key: "cantAdj", type: "pair" },
-    { label: "隣にする", key: "shouldAdj", type: "pair" },
+// ─── Step 2 ───
+function renderStep2(){
+  const tabs=[
+    {label:'一番前',key:'frontOnly',type:'toggle'},
+    {label:'前3列まで',key:'frontThree',type:'toggle'},
+    {label:'固定配置',key:'fixed',type:'fixed'},
+    {label:'隣にしない',key:'cantAdj',type:'pair'},
+    {label:'隣にする',key:'shouldAdj',type:'pair'},
   ];
+  const tab=tabs[S.condTab];
+  const f=document.createDocumentFragment();
+  f.appendChild(h('h2',{},'配置条件の設定'));
+  f.appendChild(h('p',{className:'desc'},'必要な条件を設定してください。条件なしでもランダム配置できます。'));
+  const tbar=h('div',{className:'cond-tabs'});
+  tabs.forEach((t,i)=>{
+    const cnt=t.type==='toggle'?S.conditions[t.key].size:t.type==='fixed'?Object.keys(S.conditions[t.key]).length:S.conditions[t.key].length;
+    const b=h('button',{className:'cond-tab'+(i===S.condTab?' active':''),onclick:()=>{S.condTab=i;S.pairFirst=null;S.fixedSelectStudent=null;render();}},t.label);
+    if(cnt>0)b.appendChild(h('span',{className:'cond-badge'},''+cnt));
+    tbar.appendChild(b);
+  });
+  f.appendChild(tbar);
+  const body=h('div',{className:'cond-body'});
 
-  const renderStep2 = () => {
-    const tab = condTabs[condTab];
-    return (
-      <div>
-        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: P.text, fontFamily: font }}>
-          配置条件の設定
-        </h2>
-        <p style={{ fontSize: 13, color: P.textLight, marginBottom: 14, fontFamily: font }}>
-          必要な条件を設定してください。条件なしでもランダム配置できます。
-        </p>
+  if(tab.type==='toggle'){
+    body.appendChild(h('p',{className:'desc',style:'margin-bottom:10px'},tab.key==='frontOnly'?'一番前の列に配置する児童を選んでください。':'前から3列目までに配置する児童を選んでください。'));
+    const chips=h('div',{className:'chips'});
+    S.students.forEach(s=>{
+      const on=S.conditions[tab.key].has(s.id);
+      chips.appendChild(h('button',{className:'chip'+(on?' on':''),onclick:((k,id)=>()=>{if(S.conditions[k].has(id))S.conditions[k].delete(id);else S.conditions[k].add(id);render();})(tab.key,s.id)},s.id+'. '+(s.name.trim()||s.id+'番')));
+    });
+    body.appendChild(chips);
+  }
 
-        <div style={{ display: "flex", gap: 4, marginBottom: 16, flexWrap: "wrap" }}>
-          {condTabs.map((t, i) => {
-            const count =
-              t.type === "toggle"
-                ? conditions[t.key].size
-                : t.type === "fixed"
-                  ? Object.keys(conditions[t.key]).length
-                  : conditions[t.key].length;
-            return (
-              <button
-                key={i}
-                onClick={() => {
-                  setCondTab(i);
-                  setPairFirst(null);
-                  setFixedSelectStudent(null);
-                }}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: `2px solid ${i === condTab ? P.primary : P.border}`,
-                  background: i === condTab ? P.primaryLight : "transparent",
-                  color: i === condTab ? P.primary : P.textLight,
-                  fontWeight: 700,
-                  fontSize: 13,
-                  cursor: "pointer",
-                  fontFamily: font,
-                  position: "relative",
-                }}
-              >
-                {t.label}
-                {count > 0 && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: -6,
-                      right: -6,
-                      width: 20,
-                      height: 20,
-                      borderRadius: "50%",
-                      background: P.accent,
-                      color: "#fff",
-                      fontSize: 11,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+  if(tab.type==='pair'){
+    const desc=h('p',{className:'desc',style:'margin-bottom:10px'});
+    desc.textContent=tab.key==='cantAdj'?'隣同士にしない児童を2人ずつ選んでください。':'隣同士にしたい児童を2人ずつ選んでください。';
+    if(S.pairFirst!==null){const sp=h('span',{style:'color:var(--accent);font-weight:700;margin-left:8px'},'→ 2人目を選択');desc.appendChild(sp);}
+    body.appendChild(desc);
+    const chips=h('div',{className:'chips',style:'margin-bottom:12px'});
+    S.students.forEach(s=>{
+      const isSel=S.pairFirst===s.id;
+      chips.appendChild(h('button',{className:'chip'+(isSel?' sel':''),onclick:((k,id)=>()=>{
+        if(S.pairFirst===null){S.pairFirst=id;}
+        else{if(S.pairFirst!==id){const ex=S.conditions[k].some(([a,b])=>(a===S.pairFirst&&b===id)||(a===id&&b===S.pairFirst));if(!ex)S.conditions[k].push([S.pairFirst,id]);}S.pairFirst=null;}
+        render();
+      })(tab.key,s.id)},s.id+'. '+(s.name.trim()||s.id+'番')));
+    });
+    body.appendChild(chips);
+    if(S.conditions[tab.key].length>0){
+      const pl=h('div',{className:'pair-list'});
+      pl.appendChild(h('p',{className:'desc',style:'margin-bottom:6px'},'設定済みペア：'));
+      S.conditions[tab.key].forEach(([a,b],i)=>{
+        const sa=byId(a),sb=byId(b);
+        const row=h('div',{className:'pair-row'});
+        row.appendChild(h('span',{className:'pair-tag '+(tab.key==='cantAdj'?'cant':'should')},dn(sa)+' ↔ '+dn(sb)));
+        row.appendChild(h('button',{className:'pair-rm',onclick:((k,idx)=>()=>{S.conditions[k].splice(idx,1);render();})(tab.key,i)},'✕'));
+        pl.appendChild(row);
+      });
+      body.appendChild(pl);
+    }
+  }
 
-        <div
-          style={{
-            background: P.bg,
-            borderRadius: 10,
-            padding: 14,
-            minHeight: 200,
-          }}
-        >
-          {tab.type === "toggle" && (
-            <>
-              <p style={{ fontSize: 12, color: P.textLight, marginBottom: 10, fontFamily: font }}>
-                {tab.key === "frontOnly"
-                  ? "一番前の列に配置する児童を選んでください。"
-                  : "前から3列目までに配置する児童を選んでください。"}
-              </p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {students.map((s) => {
-                  const active = conditions[tab.key].has(s.id);
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => toggleCondition(tab.key, s.id)}
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: 20,
-                        border: `2px solid ${active ? P.primary : P.border}`,
-                        background: active ? P.primary : "#fff",
-                        color: active ? "#fff" : P.text,
-                        fontSize: 13,
-                        cursor: "pointer",
-                        fontFamily: font,
-                        fontWeight: active ? 700 : 400,
-                        transition: "all 0.15s ease",
-                      }}
-                    >
-                      {s.id}. {s.name.trim() || `${s.id}番`}
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
+  if(tab.type==='fixed'){
+    const desc=h('p',{className:'desc',style:'margin-bottom:10px'});
+    desc.textContent='児童を選び、座席をクリックして固定配置してください。固定された児童はランダム配置から除外されます。';
+    if(S.fixedSelectStudent!==null){const sp=h('span',{style:'color:var(--accent);font-weight:700;margin-left:8px'},'→ '+dn(byId(S.fixedSelectStudent))+'の席を選択');desc.appendChild(sp);}
+    body.appendChild(desc);
+    const fixedVals=new Set(Object.values(S.conditions.fixed));
+    const chips=h('div',{className:'chips',style:'margin-bottom:12px'});
+    S.students.filter(s=>!fixedVals.has(s.id)).forEach(s=>{
+      const isSel=S.fixedSelectStudent===s.id;
+      chips.appendChild(h('button',{className:'chip'+(isSel?' sel':''),onclick:((id)=>()=>{S.fixedSelectStudent=S.fixedSelectStudent===id?null:id;render();})(s.id)},s.id+'. '+(s.name.trim()||s.id+'番')));
+    });
+    body.appendChild(chips);
+    // mini grid
+    const brd=h('div',{className:'board board-sm',style:`max-width:${S.cols*56}px`},'黒板');
+    body.appendChild(brd);
+    const grid=h('div',{style:`display:grid;grid-template-columns:repeat(${S.cols},1fr);gap:4px;max-width:${S.cols*56}px;margin:0 auto 12px`});
+    for(let r=0;r<S.rows;r++)for(let c=0;c<S.cols;c++){
+      const key=r+'-'+c,isDis=S.disabled.has(key),fixedId=S.conditions.fixed[key],fixedSt=fixedId?byId(fixedId):null,isFree=!isDis&&!fixedId;
+      let cls='mini-seat';if(isDis)cls+=' dis';else if(fixedId)cls+=' fixed-seat';else if(S.fixedSelectStudent!==null)cls+=' pick';
+      const cell=h('div',{className:cls,onclick:((k,free,hasFixed)=>()=>{
+        if(hasFixed){delete S.conditions.fixed[k];render();}
+        else if(S.fixedSelectStudent!==null&&free){S.conditions.fixed[k]=S.fixedSelectStudent;S.fixedSelectStudent=null;render();}
+      })(key,isFree,!!fixedId)});
+      if(fixedSt){
+        cell.appendChild(h('span',{style:'font-size:9px;color:var(--textLight)'},''+fixedSt.id));
+        cell.appendChild(h('span',{style:'font-size:10px;font-weight:700;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%'},dn(fixedSt)));
+      } else if(!isDis){
+        cell.appendChild(h('span',{style:'font-size:9px;color:var(--textLight)'},(r+1)+'-'+(c+1)));
+      }
+      grid.appendChild(cell);
+    }
+    body.appendChild(grid);
+    const fkeys=Object.keys(S.conditions.fixed);
+    if(fkeys.length>0){
+      const pl=h('div',{className:'pair-list'});
+      pl.appendChild(h('p',{className:'desc',style:'margin-bottom:6px'},'固定配置一覧：'));
+      fkeys.forEach(k=>{
+        const st=byId(S.conditions.fixed[k]),[sr,sc]=k.split('-').map(Number);
+        const row=h('div',{className:'pair-row'});
+        row.appendChild(h('span',{className:'pair-tag fixed'},dn(st)+' → '+(sr+1)+'行'+(sc+1)+'列'));
+        row.appendChild(h('button',{className:'pair-rm',onclick:((key)=>()=>{delete S.conditions.fixed[key];render();})(k)},'✕'));
+        pl.appendChild(row);
+      });
+      body.appendChild(pl);
+    }
+  }
 
-          {tab.type === "pair" && (
-            <>
-              <p style={{ fontSize: 12, color: P.textLight, marginBottom: 10, fontFamily: font }}>
-                {tab.key === "cantAdj"
-                  ? "隣同士にしない児童を2人ずつ選んでください。"
-                  : "隣同士にしたい児童を2人ずつ選んでください。"}
-                {pairFirst !== null && (
-                  <span
-                    style={{
-                      color: P.accent,
-                      fontWeight: 700,
-                      marginLeft: 8,
-                    }}
-                  >
-                    → 2人目を選択
-                  </span>
-                )}
-              </p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-                {students.map((s) => {
-                  const isFirst = pairFirst === s.id;
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => addPair(tab.key, s.id)}
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: 20,
-                        border: `2px solid ${isFirst ? P.accent : P.border}`,
-                        background: isFirst ? P.accentLight : "#fff",
-                        color: isFirst ? P.accent : P.text,
-                        fontSize: 13,
-                        cursor: "pointer",
-                        fontFamily: font,
-                        fontWeight: isFirst ? 700 : 400,
-                      }}
-                    >
-                      {s.id}. {s.name.trim() || `${s.id}番`}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {conditions[tab.key].length > 0 && (
-                <div
-                  style={{
-                    borderTop: `1px solid ${P.border}`,
-                    paddingTop: 10,
-                  }}
-                >
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: P.textLight,
-                      marginBottom: 6,
-                      fontFamily: font,
-                    }}
-                  >
-                    設定済みペア：
-                  </p>
-                  {conditions[tab.key].map(([a, b], i) => {
-                    const sa = getStudentById(a);
-                    const sb = getStudentById(b);
-                    return (
-                      <div
-                        key={i}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          padding: "4px 0",
-                          fontFamily: font,
-                          fontSize: 13,
-                        }}
-                      >
-                        <span
-                          style={{
-                            background:
-                              tab.key === "cantAdj"
-                                ? P.dangerLight
-                                : P.successLight,
-                            padding: "3px 10px",
-                            borderRadius: 12,
-                            color:
-                              tab.key === "cantAdj" ? P.danger : P.success,
-                            fontWeight: 600,
-                          }}
-                        >
-                          {displayName(sa)} ↔ {displayName(sb)}
-                        </span>
-                        <button
-                          onClick={() => removePair(tab.key, i)}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: P.danger,
-                            cursor: "pointer",
-                            fontSize: 16,
-                            padding: 2,
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
-
-          {tab.type === "fixed" && (
-            <>
-              <p style={{ fontSize: 12, color: P.textLight, marginBottom: 10, fontFamily: font }}>
-                児童を選び、座席をクリックして固定配置してください。固定された児童はランダム配置から除外されます。
-                {fixedSelectStudent !== null && (
-                  <span style={{ color: P.accent, fontWeight: 700, marginLeft: 8 }}>
-                    → {displayName(getStudentById(fixedSelectStudent))}の席を選択
-                  </span>
-                )}
-              </p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-                {students.filter((s) => !Object.values(conditions.fixed).includes(s.id)).map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setFixedSelectStudent(fixedSelectStudent === s.id ? null : s.id)}
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 20,
-                      border: `2px solid ${fixedSelectStudent === s.id ? P.accent : P.border}`,
-                      background: fixedSelectStudent === s.id ? P.accentLight : "#fff",
-                      color: fixedSelectStudent === s.id ? P.accent : P.text,
-                      fontSize: 13,
-                      cursor: "pointer",
-                      fontFamily: font,
-                      fontWeight: fixedSelectStudent === s.id ? 700 : 400,
-                    }}
-                  >
-                    {s.id}. {s.name.trim() || `${s.id}番`}
-                  </button>
-                ))}
-              </div>
-
-              <div style={{
-                textAlign: "center",
-                background: P.primaryLight,
-                border: `2px solid ${P.primary}`,
-                borderRadius: 6,
-                padding: "4px 0",
-                fontWeight: 700,
-                color: P.primary,
-                fontSize: 12,
-                fontFamily: font,
-                marginBottom: 4,
-                maxWidth: cols * 56,
-                marginLeft: "auto",
-                marginRight: "auto",
-              }}>
-                黒板
-              </div>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${cols}, 1fr)`,
-                gap: 4,
-                maxWidth: cols * 56,
-                margin: "0 auto 12px",
-              }}>
-                {Array.from({ length: rows * cols }, (_, idx) => {
-                  const r = Math.floor(idx / cols);
-                  const c = idx % cols;
-                  const key = `${r}-${c}`;
-                  const isDis = disabled.has(key);
-                  const fixedId = conditions.fixed[key];
-                  const fixedSt = fixedId ? getStudentById(fixedId) : null;
-                  const isFree = !isDis && !fixedId;
-
-                  return (
-                    <div
-                      key={key}
-                      onClick={() => {
-                        if (isDis) return;
-                        if (fixedSelectStudent !== null && isFree) {
-                          setConditions((prev) => ({
-                            ...prev,
-                            fixed: { ...prev.fixed, [key]: fixedSelectStudent },
-                          }));
-                          setFixedSelectStudent(null);
-                        }
-                      }}
-                      style={{
-                        borderRadius: 6,
-                        border: `1.5px solid ${isDis ? "transparent" : fixedId ? P.accent : fixedSelectStudent !== null && isFree ? P.primary : P.border}`,
-                        background: isDis ? P.disabled : fixedId ? P.accentLight : fixedSelectStudent !== null && isFree ? P.primaryLight : P.seatBg,
-                        padding: "4px 2px",
-                        textAlign: "center",
-                        cursor: isDis ? "default" : fixedSelectStudent !== null && isFree ? "pointer" : "default",
-                        minHeight: 36,
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        opacity: isDis ? 0.4 : 1,
-                        transition: "all 0.15s ease",
-                      }}
-                    >
-                      {fixedSt && (
-                        <>
-                          <span style={{ fontSize: 9, color: P.textLight, fontFamily: font }}>{fixedSt.id}</span>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: P.accent, fontFamily: font, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
-                            {displayName(fixedSt)}
-                          </span>
-                        </>
-                      )}
-                      {!isDis && !fixedId && (
-                        <span style={{ fontSize: 9, color: P.textLight, fontFamily: font }}>{r + 1}-{c + 1}</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {Object.keys(conditions.fixed).length > 0 && (
-                <div style={{ borderTop: `1px solid ${P.border}`, paddingTop: 10 }}>
-                  <p style={{ fontSize: 12, color: P.textLight, marginBottom: 6, fontFamily: font }}>
-                    固定配置一覧：
-                  </p>
-                  {Object.entries(conditions.fixed).map(([seatKey, studentId]) => {
-                    const st = getStudentById(studentId);
-                    const [sr, sc] = seatKey.split("-").map(Number);
-                    return (
-                      <div key={seatKey} style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "4px 0",
-                        fontFamily: font,
-                        fontSize: 13,
-                      }}>
-                        <span style={{
-                          background: P.accentLight,
-                          padding: "3px 10px",
-                          borderRadius: 12,
-                          color: P.accent,
-                          fontWeight: 600,
-                        }}>
-                          {displayName(st)} → {sr + 1}行{sc + 1}列
-                        </span>
-                        <button
-                          onClick={() => {
-                            setConditions((prev) => {
-                              const next = { ...prev.fixed };
-                              delete next[seatKey];
-                              return { ...prev, fixed: next };
-                            });
-                          }}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: P.danger,
-                            cursor: "pointer",
-                            fontSize: 16,
-                            padding: 2,
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        <button onClick={doArrange} style={{ ...btnAccent, marginTop: 16, width: "100%" }}>
-          配置する
-        </button>
-      </div>
-    );
-  };
-
-  const renderStep3 = () => (
-    <div>
-      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: P.text, fontFamily: font }}>
-        配置結果
-      </h2>
-      <p style={{ fontSize: 13, color: P.textLight, marginBottom: 12, fontFamily: font }}>
-        席をクリックして入れ替えられます。2つの席をクリックすると交換されます。
-      </p>
-
-      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-        <input
-          type="text"
-          value={className}
-          onChange={(e) => setClassName(e.target.value)}
-          placeholder="クラス名（印刷用・任意）"
-          style={{
-            padding: "7px 12px",
-            borderRadius: 8,
-            border: `1.5px solid ${P.border}`,
-            fontFamily: font,
-            fontSize: 13,
-            width: 200,
-            outline: "none",
-          }}
-        />
-        <button onClick={doArrange} style={btnOutline}>
-          再配置
-        </button>
-        <button onClick={handlePrint} style={btnPrimary}>
-          印刷
-        </button>
-      </div>
-
-      <div ref={printRef}>
-        <div
-          style={{
-            textAlign: "center",
-            background: P.primaryLight,
-            border: `2px solid ${P.primary}`,
-            borderRadius: 8,
-            padding: "8px 0",
-            fontWeight: 700,
-            color: P.primary,
-            fontSize: 14,
-            fontFamily: font,
-            marginBottom: 8,
-            maxWidth: Math.min(cols * 96, 600),
-            marginLeft: "auto",
-            marginRight: "auto",
-          }}
-        >
-          黒　板
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${cols}, 1fr)`,
-            gap: 6,
-            maxWidth: Math.min(cols * 96, 600),
-            margin: "0 auto",
-          }}
-        >
-          {Array.from({ length: rows * cols }, (_, idx) => {
-            const r = Math.floor(idx / cols);
-            const c = idx % cols;
-            const key = `${r}-${c}`;
-            const isDis = disabled.has(key);
-            const sid = arrangement[key];
-            const st = sid ? getStudentById(sid) : null;
-
-            if (isDis)
-              return (
-                <div key={key} style={{ ...seatCellStyle(key, true, true), cursor: "default" }} />
-              );
-
-            return (
-              <div
-                key={key}
-                onClick={() => handleSeatClick(key)}
-                style={seatCellStyle(key, false, true)}
-              >
-                {st && (
-                  <>
-                    <span style={{ fontSize: 10, color: P.textLight, fontFamily: font }}>
-                      {st.id}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 700,
-                        color: P.text,
-                        fontFamily: font,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        maxWidth: "100%",
-                        padding: "0 2px",
-                      }}
-                    >
-                      {displayName(st)}
-                    </span>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <p style={{ textAlign: "center", fontSize: 13, color: P.textLight, marginTop: 4, fontFamily: font }}>
-          ▲ 前 ▲
-        </p>
-      </div>
-      {selectedSeat && (
-        <div
-          style={{
-            marginTop: 12,
-            padding: "8px 14px",
-            background: P.accentLight,
-            borderRadius: 8,
-            textAlign: "center",
-            fontSize: 13,
-            fontFamily: font,
-            color: P.accent,
-            fontWeight: 600,
-          }}
-        >
-          {displayName(getStudentById(arrangement[selectedSeat]))}を選択中 — 入れ替え先をクリック
-        </div>
-      )}
-    </div>
-  );
-
-  const btnSmall = {
-    width: 34,
-    height: 34,
-    borderRadius: "50%",
-    border: `2px solid ${P.border}`,
-    background: "#fff",
-    fontSize: 18,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontFamily: font,
-    color: P.text,
-  };
-
-  const btnPrimary = {
-    padding: "9px 20px",
-    borderRadius: 8,
-    border: "none",
-    background: P.primary,
-    color: "#fff",
-    fontWeight: 700,
-    fontSize: 14,
-    cursor: "pointer",
-    fontFamily: font,
-  };
-
-  const btnAccent = {
-    padding: "12px 20px",
-    borderRadius: 10,
-    border: "none",
-    background: P.accent,
-    color: "#fff",
-    fontWeight: 700,
-    fontSize: 16,
-    cursor: "pointer",
-    fontFamily: font,
-    letterSpacing: 2,
-  };
-
-  const btnOutline = {
-    padding: "9px 20px",
-    borderRadius: 8,
-    border: `2px solid ${P.primary}`,
-    background: "transparent",
-    color: P.primary,
-    fontWeight: 700,
-    fontSize: 14,
-    cursor: "pointer",
-    fontFamily: font,
-  };
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: P.bg,
-        fontFamily: font,
-        color: P.text,
-      }}
-    >
-      <link
-        href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap"
-        rel="stylesheet"
-      />
-
-      {/* Privacy notice */}
-      {!privacyDismissed && (
-        <div
-          style={{
-            background: "#1a3a44",
-            color: "#e0f0f4",
-            padding: "10px 16px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 12,
-            fontSize: 13,
-            fontFamily: font,
-          }}
-        >
-          <span style={{ fontSize: 16 }}>🔒</span>
-          <span>
-            このアプリはすべてのデータをブラウザ内でのみ処理します。サーバーへの送信は一切ありません。ページを閉じるとデータは消去されます。
-          </span>
-          <button
-            onClick={() => setPrivacyDismissed(true)}
-            style={{
-              background: "rgba(255,255,255,0.15)",
-              border: "none",
-              color: "#fff",
-              borderRadius: 6,
-              padding: "4px 12px",
-              cursor: "pointer",
-              fontSize: 12,
-              fontFamily: font,
-              flexShrink: 0,
-            }}
-          >
-            OK
-          </button>
-        </div>
-      )}
-
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px" }}>
-        <h1
-          style={{
-            textAlign: "center",
-            fontSize: 24,
-            fontWeight: 700,
-            color: P.primary,
-            marginBottom: 24,
-            fontFamily: font,
-          }}
-        >
-          席替えアプリ
-        </h1>
-
-        {renderStepIndicator()}
-
-        <div
-          style={{
-            background: P.card,
-            borderRadius: 16,
-            padding: 24,
-            boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
-            border: `1px solid ${P.border}`,
-          }}
-        >
-          {step === 0 && renderStep0()}
-          {step === 1 && renderStep1()}
-          {step === 2 && renderStep2()}
-          {step === 3 && renderStep3()}
-        </div>
-
-        {/* Navigation */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginTop: 16,
-          }}
-        >
-          {step > 0 ? (
-            <button
-              onClick={() => {
-                setStep(step - 1);
-                setSelectedSeat(null);
-                setPairFirst(null);
-                setFixedSelectStudent(null);
-              }}
-              style={btnOutline}
-            >
-              ← 戻る
-            </button>
-          ) : (
-            <div />
-          )}
-          {step < 2 && (
-            <button
-              onClick={() => setStep(step + 1)}
-              disabled={!canProceed()}
-              style={{
-                ...btnPrimary,
-                opacity: canProceed() ? 1 : 0.4,
-              }}
-            >
-              次へ →
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+  f.appendChild(body);
+  const ab=h('button',{className:'btn-accent',style:'margin-top:16px',onclick:()=>{const g=generate();S.arrangement=g.result;S.arrangeWarning=g.success?'':'⚠ 条件が厳しいため、一部の条件（隣にしない等）を満たせませんでした。「再配置」をお試しください。';S.selectedSeat=null;S.step=3;render();}},'配置する');
+  f.appendChild(ab);
+  return f;
 }
+
+// ─── Step 3 ───
+function renderStep3(){
+  const f=document.createDocumentFragment();
+  f.appendChild(h('h2',{},'配置結果'));
+  f.appendChild(h('p',{className:'desc'},'席をクリックして入れ替えられます。2つの席をクリックすると交換されます。'));
+  if(S.arrangeWarning){
+    const warn=h('div',{style:'background:var(--dangerLight);color:var(--danger);padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:13px;font-weight:700;border:1px solid rgba(217,85,85,.27)'},S.arrangeWarning);
+    f.appendChild(warn);
+  }
+  const bar=h('div',{className:'result-bar'});
+  const ci=h('input',{className:'class-input',type:'text',placeholder:'クラス名（印刷用・任意）',oninput:e=>{S.className=e.target.value;}});
+  ci.value=S.className;
+  bar.appendChild(ci);
+  bar.appendChild(h('button',{className:'btn-outline',onclick:()=>{const g=generate();S.arrangement=g.result;S.arrangeWarning=g.success?'':'⚠ 条件が厳しいため、一部の条件（隣にしない等）を満たせませんでした。「再配置」をお試しください。';S.selectedSeat=null;render();}},'再配置'));
+  bar.appendChild(h('button',{className:'btn-primary',onclick:handlePrint},'印刷'));
+  f.appendChild(bar);
+  const maxW=Math.min(S.cols*96,600);
+  f.appendChild(h('div',{className:'board',style:`max-width:${maxW}px`},'黒　板'));
+  const grid=h('div',{className:'grid',style:`grid-template-columns:repeat(${S.cols},1fr);max-width:${maxW}px`});
+  for(let r=0;r<S.rows;r++)for(let c=0;c<S.cols;c++){
+    const key=r+'-'+c,isDis=S.disabled.has(key);
+    if(isDis){grid.appendChild(h('div',{className:'dis-result',style:'min-height:64px;border-radius:8px;background:var(--disabled);border:2px solid transparent'}));continue;}
+    const sid=S.arrangement[key],st=sid?byId(sid):null;
+    const isSel=S.selectedSeat===key;
+    const cell=h('div',{className:'result-seat'+(isSel?' selected':''),onclick:((k)=>()=>{
+      if(!S.arrangement[k])return;
+      if(S.selectedSeat===null)S.selectedSeat=k;
+      else if(S.selectedSeat===k)S.selectedSeat=null;
+      else{const t=S.arrangement[S.selectedSeat];S.arrangement[S.selectedSeat]=S.arrangement[k];S.arrangement[k]=t;S.selectedSeat=null;}
+      render();
+    })(key)});
+    if(st){
+      cell.appendChild(h('span',{style:'font-size:10px;color:var(--textLight)'},''+st.id));
+      cell.appendChild(h('span',{style:'font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;padding:0 2px'},dn(st)));
+    }
+    grid.appendChild(cell);
+  }
+  f.appendChild(grid);
+  f.appendChild(h('p',{className:'front-label'},'▲ 前 ▲'));
+  if(S.selectedSeat){
+    f.appendChild(h('div',{className:'sel-msg'},dn(byId(S.arrangement[S.selectedSeat]))+'を選択中 — 入れ替え先をクリック'));
+  }
+  return f;
+}
+
+function handlePrint(){
+  const w=window.open('','_blank');
+  if(!w){alert('ポップアップがブロックされました。ブラウザの設定を確認してください。');return;}
+  let html=`<!DOCTYPE html><html><head><meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
+  <title>座席表</title><style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Zen Maru Gothic',sans-serif;padding:20mm;}
+  .title{text-align:center;font-size:20pt;font-weight:700;margin-bottom:4mm;}
+  .date{text-align:right;font-size:10pt;color:#666;margin-bottom:6mm;}
+  .teacher{text-align:center;background:#E8F4F7;border:2px solid #3D7A8A;border-radius:6px;padding:4mm;font-size:11pt;font-weight:700;color:#3D7A8A;margin-bottom:6mm;max-width:160mm;margin-left:auto;margin-right:auto;}
+  .grid{display:grid;grid-template-columns:repeat(${S.cols},1fr);gap:3mm;max-width:180mm;margin:0 auto;}
+  .seat{border:1.5px solid #ccc;border-radius:5px;padding:3mm;text-align:center;min-height:14mm;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .seat.disabled{background:#f0f0f0;border-color:#e0e0e0;}
+  .seat .num{font-size:8pt;color:#999;}
+  .seat .name{font-size:11pt;font-weight:700;margin-top:1mm;}
+  .front-label{text-align:center;font-size:9pt;color:#999;margin-top:4mm;}
+  </style></head><body>
+  <div class="title">${S.className||'座席表'}</div>
+  <div class="date">${new Date().toLocaleDateString('ja-JP')}</div>
+  <div class="teacher">黒　板</div>
+  <div class="grid">`;
+  for(let r=0;r<S.rows;r++)for(let c=0;c<S.cols;c++){
+    const key=r+'-'+c;
+    if(S.disabled.has(key)){html+='<div class="seat disabled"></div>';}
+    else{const sid=S.arrangement[key],st=sid?byId(sid):null;html+=`<div class="seat"><span class="num">${st?st.id:''}</span><span class="name">${st?dn(st):''}</span></div>`;}
+  }
+  html+='</div><div class="front-label">▲ 前 ▲</div></body></html>';
+  w.document.write(html);w.document.close();
+  setTimeout(()=>w.print(),400);
+}
+
+render();
+</script>
+</body>
+</html>
