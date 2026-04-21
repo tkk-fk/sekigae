@@ -171,6 +171,7 @@ function h(tag,attrs,children){
   if(attrs)for(const[k,v]of Object.entries(attrs)){
     if(k==='onclick')el.addEventListener('click',v);
     else if(k==='oninput')el.addEventListener('input',v);
+    else if(k==='onchange')el.addEventListener('change',v);
     else if(k==='className')el.className=v;
     else if(k==='style'&&typeof v==='string')el.style.cssText=v;
     else el.setAttribute(k,v);
@@ -272,15 +273,16 @@ function renderStep1(){
   f.appendChild(h('h2',{},'名簿作成（'+n+'人）'));
   f.appendChild(h('p',{className:'desc'},'スプレッドシートからコピーした名前をまとめて貼り付けるか、1人ずつ入力してください。名前の入力は任意です。'));
   const pw=h('div',{style:'margin-bottom:16px'});
-  const ta=h('textarea',{className:'paste-area',rows:'5',placeholder:'名前を1行ずつ貼り付け\n例：\n田中太郎\n山田花子\n佐藤次郎',oninput:e=>{S.pasteText=e.target.value;}});
-  ta.value=S.pasteText;
-  pw.appendChild(ta);
   const pb=h('button',{className:'btn-primary',style:'margin-top:8px',onclick:()=>{
     const lines=S.pasteText.split(/[\n\r]+/).map(l=>l.split(/\t/)[0].trim()).filter(l=>l);
     S.students.forEach((s,i)=>{if(i<lines.length)s.name=lines[i];});
     render();
   }},'貼り付けを反映');
-  if(!S.pasteText.trim()){pb.disabled=true;pb.style.opacity='.4';}
+  const updatePb=()=>{const has=S.pasteText.trim();pb.disabled=!has;pb.style.opacity=has?'1':'.4';};
+  const ta=h('textarea',{className:'paste-area',rows:'5',placeholder:'名前を1行ずつ貼り付け\n例：\n田中太郎\n山田花子\n佐藤次郎',oninput:e=>{S.pasteText=e.target.value;updatePb();}});
+  ta.value=S.pasteText;
+  pw.appendChild(ta);
+  updatePb();
   pw.appendChild(pb);
   f.appendChild(pw);
   const list=h('div',{className:'name-list'});
@@ -421,7 +423,7 @@ function renderStep3(){
     f.appendChild(warn);
   }
   const bar=h('div',{className:'result-bar'});
-  const ci=h('input',{className:'class-input',type:'text',placeholder:'クラス名（印刷用・任意）',oninput:e=>{S.className=e.target.value;}});
+  const ci=h('input',{className:'class-input',id:'classNameInput',type:'text',placeholder:'クラス名（印刷用・任意）',oninput:e=>{S.className=e.target.value;},onchange:e=>{S.className=e.target.value;}});
   ci.value=S.className;
   bar.appendChild(ci);
   bar.appendChild(h('button',{className:'btn-outline',onclick:()=>{const g=generate();S.arrangement=g.result;S.arrangeWarning=g.success?'':'⚠ 条件が厳しいため、一部の条件（隣にしない等）を満たせませんでした。「再配置」をお試しください。';S.selectedSeat=null;render();}},'再配置'));
@@ -457,17 +459,19 @@ function renderStep3(){
 }
 
 function handlePrint(){
+  const ci=document.getElementById('classNameInput');
+  if(ci)S.className=ci.value;
   const w=window.open('','_blank');
   if(!w){alert('ポップアップがブロックされました。ブラウザの設定を確認してください。');return;}
   let html=`<!DOCTYPE html><html><head><meta charset="utf-8">
   <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
   <title>座席表</title><style>
   *{margin:0;padding:0;box-sizing:border-box;}
-  body{font-family:'Zen Maru Gothic',sans-serif;padding:20mm;}
+  body{font-family:'Zen Maru Gothic',sans-serif;padding:10mm 15mm;}
   .title{text-align:center;font-size:20pt;font-weight:700;margin-bottom:4mm;}
   .date{text-align:right;font-size:10pt;color:#666;margin-bottom:6mm;}
-  .teacher{text-align:center;background:#E8F4F7;border:2px solid #3D7A8A;border-radius:6px;padding:4mm;font-size:11pt;font-weight:700;color:#3D7A8A;margin-bottom:6mm;max-width:160mm;margin-left:auto;margin-right:auto;}
-  .grid{display:grid;grid-template-columns:repeat(${S.cols},1fr);gap:3mm;max-width:180mm;margin:0 auto;}
+  .teacher{text-align:center;background:#E8F4F7;border:2px solid #3D7A8A;border-radius:6px;padding:4mm;font-size:11pt;font-weight:700;color:#3D7A8A;margin-bottom:6mm;max-width:160mm;margin-left:auto;margin-right:auto;page-break-after:avoid;}
+  .grid{display:grid;grid-template-columns:repeat(${S.cols},1fr);gap:3mm;max-width:180mm;margin:0 auto;page-break-before:avoid;page-break-inside:avoid;}
   .seat{border:1.5px solid #ccc;border-radius:5px;padding:3mm;text-align:center;min-height:14mm;display:flex;flex-direction:column;align-items:center;justify-content:center;}
   .seat.disabled{background:#f0f0f0;border-color:#e0e0e0;}
   .seat .num{font-size:8pt;color:#999;}
@@ -483,7 +487,7 @@ function handlePrint(){
     if(S.disabled.has(key)){html+='<div class="seat disabled"></div>';}
     else{const sid=S.arrangement[key],st=sid?byId(sid):null;html+=`<div class="seat"><span class="num">${st?st.id:''}</span><span class="name">${st?dn(st):''}</span></div>`;}
   }
-  html+='</div><div class="front-label">▲ 前 ▲</div></body></html>';
+  html+='</div></body></html>';
   w.document.write(html);w.document.close();
   setTimeout(()=>w.print(),400);
 }
