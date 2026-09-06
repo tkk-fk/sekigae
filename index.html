@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <title>席替えアプリ</title>
-<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 :root{
@@ -12,7 +11,7 @@
   --accent:#E8945A;--accentLight:#FFF3E8;--danger:#D95555;--dangerLight:#FDEAEA;
   --success:#4A9A6B;--successLight:#E8F5EE;--text:#2D3436;--textLight:#6B7B8D;
   --border:#E2DFD8;--disabled:#D5D0C8;--seatBg:#F0EDE6;--seatActive:#E8F4F7;
-  --font:'Zen Maru Gothic','BIZ UDPGothic',sans-serif;
+  --font:'BIZ UDPGothic','Hiragino Sans','Yu Gothic',Meiryo,sans-serif;
 }
 html,body{min-height:100dvh;background:var(--bg);font-family:var(--font);color:var(--text);-webkit-text-size-adjust:100%;}
 button,input,textarea{font-family:var(--font);touch-action:manipulation;}
@@ -458,16 +457,24 @@ function renderStep3(){
   return f;
 }
 
+function escapePrintHtml(value){
+  return String(value ?? '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
 function handlePrint(){
   const ci=document.getElementById('classNameInput');
   if(ci)S.className=ci.value;
   const w=window.open('','_blank');
   if(!w){alert('ポップアップがブロックされました。ブラウザの設定を確認してください。');return;}
   let html=`<!DOCTYPE html><html><head><meta charset="utf-8">
-  <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
   <title>座席表</title><style>
   *{margin:0;padding:0;box-sizing:border-box;}
-  body{font-family:'Zen Maru Gothic',sans-serif;padding:10mm 15mm;}
+  body{font-family:'BIZ UDPGothic','Hiragino Sans','Yu Gothic',Meiryo,sans-serif;padding:10mm 15mm;}
   .title{text-align:center;font-size:20pt;font-weight:700;margin-bottom:4mm;}
   .date{text-align:right;font-size:10pt;color:#666;margin-bottom:6mm;}
   .teacher{text-align:center;background:#E8F4F7;border:2px solid #3D7A8A;border-radius:6px;padding:4mm;font-size:11pt;font-weight:700;color:#3D7A8A;margin-bottom:6mm;max-width:160mm;margin-left:auto;margin-right:auto;page-break-after:avoid;}
@@ -478,14 +485,14 @@ function handlePrint(){
   .seat .name{font-size:11pt;font-weight:700;margin-top:1mm;}
   .front-label{text-align:center;font-size:9pt;color:#999;margin-top:4mm;}
   </style></head><body>
-  <div class="title">${S.className||'座席表'}</div>
+  <div class="title">${escapePrintHtml(S.className||'座席表')}</div>
   <div class="date">${new Date().toLocaleDateString('ja-JP')}</div>
   <div class="teacher">黒　板</div>
   <div class="grid">`;
   for(let r=0;r<S.rows;r++)for(let c=0;c<S.cols;c++){
     const key=r+'-'+c;
     if(S.disabled.has(key)){html+='<div class="seat disabled"></div>';}
-    else{const sid=S.arrangement[key],st=sid?byId(sid):null;html+=`<div class="seat"><span class="num">${st?st.id:''}</span><span class="name">${st?dn(st):''}</span></div>`;}
+    else{const sid=S.arrangement[key],st=sid?byId(sid):null;html+=`<div class="seat"><span class="num">${st?st.id:''}</span><span class="name">${escapePrintHtml(st?dn(st):'')}</span></div>`;}
   }
   html+='</div></body></html>';
   w.document.write(html);w.document.close();
